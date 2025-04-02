@@ -30,7 +30,6 @@ import SortIcon from '@mui/icons-material/Sort';
 import { fetchEmails } from '../services/gmailService';
 import { Email } from '../types/types';
 import AudioRecorder from '../components/AudioRecorder';
-import { usePushNotifications } from '../hooks/usePushNotifications';
 
 type SortOption = 'date' | 'sender' | 'subject';
 type FilterOption = 'all' | 'unread' | 'read';
@@ -40,7 +39,6 @@ const HomePage: React.FC = () => {
   const navigate = useNavigate();
   const theme = useTheme();
   const isMobile = useMediaQuery(theme.breakpoints.down('sm'));
-  const { error: notificationError } = usePushNotifications();
   
   const [emails, setEmails] = useState<Email[]>([]);
   const [loading, setLoading] = useState(true);
@@ -153,12 +151,6 @@ const HomePage: React.FC = () => {
       {error && (
         <Alert severity="error" sx={{ mb: 2 }}>
           {error}
-        </Alert>
-      )}
-
-      {notificationError && (
-        <Alert severity="warning" sx={{ mb: 2 }}>
-          Push notifications are not available: {notificationError}
         </Alert>
       )}
 
