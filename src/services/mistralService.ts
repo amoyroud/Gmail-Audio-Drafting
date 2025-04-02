@@ -59,6 +59,9 @@ Write the complete email response:`;
     return Array.isArray(content) ? content.map(chunk => chunk.toString()).join('') : content;
   } catch (error) {
     console.error('Error in generateDraftResponse:', error);
+    if (error instanceof Error) {
+      throw new Error(`Failed to generate draft response: ${error.message}`);
+    }
     throw new Error('Failed to generate draft response. Please try again.');
   }
 }; 

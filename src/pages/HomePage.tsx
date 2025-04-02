@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth0 } from '@auth0/auth0-react';
 import {
@@ -35,6 +35,8 @@ type SortOption = 'date' | 'sender' | 'subject';
 type FilterOption = 'all' | 'unread' | 'read';
 
 const HomePage: React.FC = () => {
+  console.log('HomePage: Component rendering');
+  
   const { getAccessTokenSilently } = useAuth0();
   const navigate = useNavigate();
   const theme = useTheme();
@@ -49,39 +51,61 @@ const HomePage: React.FC = () => {
   const [filterBy, setFilterBy] = useState<FilterOption>('all');
   const [showFilters, setShowFilters] = useState(false);
 
+  // Memoize the token getter to prevent unnecessary re-renders
+  const getToken = useCallback(async () => {
+    try {
+      return await getAccessTokenSilently();
+    } catch (error) {
+      console.error('Error getting token:', error);
+      throw error;
+    }
+  }, [getAccessTokenSilently]);
+
+  const fetchEmailsList = useCallback(async (mounted: boolean) => {
+    console.log('HomePage: Fetching emails, mounted:', mounted);
+    if (!mounted) return;
+    
+    setLoading(true);
+    setError(null);
+    
+    try {
+      console.log('HomePage: Getting access token');
+      const token = await getToken();
+      console.log('HomePage: Got access token, fetching emails');
+      const emailList = await fetchEmails(token);
+      console.log('HomePage: Got emails:', emailList.length);
+      if (mounted) {
+        setEmails(emailList);
+      }
+    } catch (err) {
+      console.error('HomePage: Error fetching emails:', err);
+      if (mounted) {
+        setError('Failed to load emails. Please try again.');
+      }
+    } finally {
+      if (mounted) {
+        setLoading(false);
+      }
+    }
+  }, [getToken]);
+
+  // Use a ref to track if we've already fetched emails
+  const initialFetchDone = React.useRef(false);
+
   useEffect(() => {
+    console.log('HomePage: useEffect running, initialFetchDone:', initialFetchDone.current);
     let mounted = true;
     
-    const fetchEmailsList = async () => {
-      if (!mounted) return;
-      
-      setLoading(true);
-      setError(null);
-      
-      try {
-        const token = await getAccessTokenSilently();
-        const emailList = await fetchEmails(token);
-        if (mounted) {
-          setEmails(emailList);
-        }
-      } catch (err) {
-        console.error('Error fetching emails:', err);
-        if (mounted) {
-          setError('Failed to load emails. Please try again.');
-        }
-      } finally {
-        if (mounted) {
-          setLoading(false);
-        }
-      }
-    };
-    
-    fetchEmailsList();
+    if (!initialFetchDone.current) {
+      initialFetchDone.current = true;
+      fetchEmailsList(mounted);
+    }
 
     return () => {
+      console.log('HomePage: useEffect cleanup');
       mounted = false;
     };
-  }, [getAccessTokenSilently]);
+  }, [fetchEmailsList]);
 
   const handleEmailClick = (email: Email) => {
     setSelectedEmail(email);

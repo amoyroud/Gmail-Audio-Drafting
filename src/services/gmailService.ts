@@ -13,7 +13,7 @@ const mockEmails: Email[] = [
       name: 'John Smith',
       email: 'john.smith@example.com'
     },
-    date: new Date(Date.now() - 3600000).toISOString(),
+    date: '2024-03-15T10:00:00Z',
     body: `Hi there,
 
 I wanted to provide an update on our Q2 roadmap. We've made significant progress on the key initiatives we discussed last month. Here's a quick summary:
@@ -36,7 +36,7 @@ John`,
       name: 'Sarah Johnson',
       email: 'sarah.j@example.org'
     },
-    date: new Date(Date.now() - 86400000).toISOString(),
+    date: '2024-03-14T15:30:00Z',
     body: `Hello,
 
 I'd like to invite you to our quarterly strategy planning session next Friday at 10:00 AM EST. Please come prepared with your team's goals for Q3.
@@ -58,7 +58,7 @@ Director of Operations`,
       name: 'IT Department',
       email: 'it-noreply@example.com'
     },
-    date: new Date(Date.now() - 7200000).toISOString(),
+    date: '2024-03-14T09:00:00Z',
     body: `NOTICE: PLANNED SYSTEM MAINTENANCE
 
 Our team will be performing critical system updates tonight between 11:00 PM and 3:00 AM EST. During this time, the following services will be unavailable:
@@ -120,40 +120,11 @@ export const fetchEmails = async (token: string): Promise<Email[]> => {
  * @returns Email details
  */
 export const getEmailById = async (token: string, emailId: string): Promise<Email> => {
-  // In a production environment, this would fetch the specific email from the Gmail API
-  // For development, we find the email in our mock data
-  
-  // This function would normally look like this:
-  /*
-  try {
-    const response = await axios.get(`${API_BASE_URL}/users/me/messages/${emailId}`, {
-      headers: {
-        Authorization: `Bearer ${token}`,
-      },
-      params: {
-        format: 'full',
-      },
-    });
-
-    // Process and return the email data
-    return processGmailMessage(response.data);
-  } catch (error) {
-    console.error('Error fetching email details:', error);
-    throw error;
+  const email = mockEmails.find(e => e.id === emailId);
+  if (email) {
+    return Promise.resolve({...email});
   }
-  */
-  
-  // Return mock data for now
-  return new Promise((resolve, reject) => {
-    setTimeout(() => {
-      const email = mockEmails.find(e => e.id === emailId);
-      if (email) {
-        resolve({...email});
-      } else {
-        reject(new Error('Email not found'));
-      }
-    }, 800); // Simulate network delay
-  });
+  return Promise.reject(new Error('Email not found'));
 };
 
 /**

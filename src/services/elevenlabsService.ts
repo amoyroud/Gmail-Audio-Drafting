@@ -47,7 +47,7 @@ export const transcribeSpeech = async (audioBlob: Blob): Promise<string> => {
     // Convert blob to FormData
     const formData = new FormData();
     formData.append('file', audioBlob, `audio.${audioBlob.type.split('/')[1]}`);
-    formData.append('model_id', 'scribe_v1');
+    formData.append('model_id', 'whisper-1');
 
     console.log('Making request to ElevenLabs API...');
     console.log('API URL:', `${ELEVENLABS_API_URL}/speech-to-text`);

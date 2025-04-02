@@ -34,6 +34,9 @@ root.render(
       audience: process.env.REACT_APP_AUTH0_AUDIENCE,
       scope: process.env.REACT_APP_GMAIL_API_SCOPE
     }}
+    cacheLocation="localstorage"
+    useRefreshTokens={true}
+    useRefreshTokensFallback={false}
   >
     <ThemeProvider theme={theme}>
       <CssBaseline />
