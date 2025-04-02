@@ -50,23 +50,37 @@ const HomePage: React.FC = () => {
   const [showFilters, setShowFilters] = useState(false);
 
   useEffect(() => {
+    let mounted = true;
+    
     const fetchEmailsList = async () => {
+      if (!mounted) return;
+      
       setLoading(true);
       setError(null);
       
       try {
         const token = await getAccessTokenSilently();
         const emailList = await fetchEmails(token);
-        setEmails(emailList);
+        if (mounted) {
+          setEmails(emailList);
+        }
       } catch (err) {
         console.error('Error fetching emails:', err);
-        setError('Failed to load emails. Please try again.');
+        if (mounted) {
+          setError('Failed to load emails. Please try again.');
+        }
       } finally {
-        setLoading(false);
+        if (mounted) {
+          setLoading(false);
+        }
       }
     };
     
     fetchEmailsList();
+
+    return () => {
+      mounted = false;
+    };
   }, [getAccessTokenSilently]);
 
   const handleEmailClick = (email: Email) => {

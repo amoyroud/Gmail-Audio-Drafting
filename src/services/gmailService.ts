@@ -110,11 +110,7 @@ export const fetchEmails = async (token: string): Promise<Email[]> => {
   */
   
   // Return mock data for now
-  return new Promise(resolve => {
-    setTimeout(() => {
-      resolve([...mockEmails]);
-    }, 1000); // Simulate network delay
-  });
+  return Promise.resolve([...mockEmails]); // Remove setTimeout to prevent potential memory leaks
 };
 
 /**
