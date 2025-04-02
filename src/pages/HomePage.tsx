@@ -40,7 +40,7 @@ const HomePage: React.FC = () => {
   const navigate = useNavigate();
   const theme = useTheme();
   const isMobile = useMediaQuery(theme.breakpoints.down('sm'));
-  const { permission, error: notificationError } = usePushNotifications();
+  const { error: notificationError } = usePushNotifications();
   
   const [emails, setEmails] = useState<Email[]>([]);
   const [loading, setLoading] = useState(true);
@@ -70,6 +70,11 @@ const HomePage: React.FC = () => {
     
     fetchEmailsList();
   }, [getAccessTokenSilently]);
+
+  const handleEmailClick = (email: Email) => {
+    setSelectedEmail(email);
+    navigate(`/email/${email.id}`);
+  };
 
   const formatDate = (dateString: string) => {
     const date = new Date(dateString);
@@ -212,7 +217,7 @@ const HomePage: React.FC = () => {
                 <ListItem disablePadding>
                   <ListItemButton 
                     selected={selectedEmail?.id === email.id}
-                    onClick={() => setSelectedEmail(email)}
+                    onClick={() => handleEmailClick(email)}
                   >
                     <ListItemText
                       primary={

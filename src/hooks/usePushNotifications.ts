@@ -15,21 +15,7 @@ export const usePushNotifications = () => {
     error: null
   });
 
-  const checkPermission = useCallback(async () => {
-    try {
-      const permission = await Notification.requestPermission();
-      setState(prev => ({ ...prev, permission }));
-
-      if (permission === 'granted') {
-        await subscribeToPushNotifications();
-      }
-    } catch (error) {
-      console.error('Error checking notification permission:', error);
-      setState(prev => ({ ...prev, error: 'Failed to check notification permission' }));
-    }
-  }, []);
-
-  const subscribeToPushNotifications = async () => {
+  const subscribeToPushNotifications = useCallback(async () => {
     if (!('serviceWorker' in navigator)) {
       setState(prev => ({ ...prev, error: 'Service Worker not supported' }));
       return;
@@ -58,9 +44,23 @@ export const usePushNotifications = () => {
       console.error('Error subscribing to push notifications:', error);
       setState(prev => ({ ...prev, error: 'Failed to subscribe to push notifications' }));
     }
-  };
+  }, [getAccessTokenSilently]);
 
-  const unsubscribeFromPushNotifications = async () => {
+  const checkPermission = useCallback(async () => {
+    try {
+      const permission = await Notification.requestPermission();
+      setState(prev => ({ ...prev, permission }));
+
+      if (permission === 'granted') {
+        await subscribeToPushNotifications();
+      }
+    } catch (error) {
+      console.error('Error checking notification permission:', error);
+      setState(prev => ({ ...prev, error: 'Failed to check notification permission' }));
+    }
+  }, [subscribeToPushNotifications]);
+
+  const unsubscribeFromPushNotifications = useCallback(async () => {
     try {
       if (state.subscription) {
         await state.subscription.unsubscribe();
@@ -70,7 +70,7 @@ export const usePushNotifications = () => {
       console.error('Error unsubscribing from push notifications:', error);
       setState(prev => ({ ...prev, error: 'Failed to unsubscribe from push notifications' }));
     }
-  };
+  }, [state.subscription]);
 
   useEffect(() => {
     let mounted = true;

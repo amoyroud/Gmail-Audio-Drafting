@@ -30,7 +30,7 @@ import { generateDraftResponse } from '../services/mistralService';
 import { Email } from '../types/types';
 
 const EmailViewPage: React.FC = () => {
-  const { emailId } = useParams<{ emailId: string }>();
+  const { id } = useParams<{ id: string }>();
   const { getAccessTokenSilently } = useAuth0();
   const navigate = useNavigate();
   const theme = useTheme();
@@ -39,8 +39,7 @@ const EmailViewPage: React.FC = () => {
   const [email, setEmail] = useState<Email | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [isRecording, setIsRecording] = useState(false);
-  const [audioBlob, setAudioBlob] = useState<Blob | null>(null);
+  const [showRecorder, setShowRecorder] = useState(false);
   const [transcription, setTranscription] = useState('');
   const [draftReply, setDraftReply] = useState('');
   const [processingAudio, setProcessingAudio] = useState(false);
@@ -54,14 +53,14 @@ const EmailViewPage: React.FC = () => {
 
   useEffect(() => {
     const fetchEmailDetails = async () => {
-      if (!emailId) return;
+      if (!id) return;
       
       setLoading(true);
       setError(null);
       
       try {
         const token = await getAccessTokenSilently();
-        const emailData = await getEmailById(token, emailId);
+        const emailData = await getEmailById(token, id);
         setEmail(emailData);
       } catch (err) {
         console.error('Error fetching email details:', err);
@@ -72,7 +71,7 @@ const EmailViewPage: React.FC = () => {
     };
     
     fetchEmailDetails();
-  }, [emailId, getAccessTokenSilently]);
+  }, [id, getAccessTokenSilently]);
 
   const startRecording = async () => {
     try {
@@ -88,12 +87,11 @@ const EmailViewPage: React.FC = () => {
 
       mediaRecorderRef.current.onstop = () => {
         const audioBlob = new Blob(audioChunksRef.current, { type: 'audio/wav' });
-        setAudioBlob(audioBlob);
         processAudioToText(audioBlob);
       };
 
       mediaRecorderRef.current.start();
-      setIsRecording(true);
+      setShowRecorder(true);
     } catch (err) {
       console.error('Error starting recording:', err);
       setError('Failed to access microphone. Please check permissions and try again.');
@@ -101,9 +99,9 @@ const EmailViewPage: React.FC = () => {
   };
 
   const stopRecording = () => {
-    if (mediaRecorderRef.current && isRecording) {
+    if (mediaRecorderRef.current && showRecorder) {
       mediaRecorderRef.current.stop();
-      setIsRecording(false);
+      setShowRecorder(false);
       
       // Stop all tracks in the stream
       if (mediaRecorderRef.current.stream) {
@@ -278,13 +276,13 @@ const EmailViewPage: React.FC = () => {
           </Typography>
           
           <Box sx={{ display: 'flex', justifyContent: 'center', my: 2 }}>
-            {!isRecording ? (
+            {!showRecorder ? (
               <Button
                 variant="contained"
                 color="primary"
                 startIcon={<MicIcon />}
                 onClick={startRecording}
-                disabled={isRecording || processingAudio || generatingDraft}
+                disabled={showRecorder || processingAudio || generatingDraft}
               >
                 Start Recording
               </Button>

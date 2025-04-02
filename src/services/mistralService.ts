@@ -23,21 +23,20 @@ export const generateDraftResponse = async (
     const { emailSubject, emailBody, transcribedText, senderName } = params;
 
     // Create a prompt that includes all the context
-    const prompt = `You are an AI assistant helping to draft an email response for a venture capitalist.
+    const prompt = `You are an AI assistant helping to draft an email response.
 
 Context:
 - Email subject: "${emailSubject}"
+- Original email content: "${emailBody}"
 - Sender name: ${senderName}
-- Original email body: "${emailBody}"
 - My transcribed voice notes about how to respond: "${transcribedText}"
 
 Task: Write a professional and friendly email response that:
 1. Addresses the sender appropriately
 2. References the original email subject and content
 3. Incorporates the key points from my transcribed voice notes
-4. Maintains a friendly tone
-5. Sign with Antoine
-
+4. Maintains a professional yet warm tone
+5. Includes a proper email signature
 
 Write the complete email response:`;
 
