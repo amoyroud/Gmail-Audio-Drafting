@@ -1,5 +1,4 @@
 import React, { useRef, useState } from 'react';
-import { useAuth0 } from '@auth0/auth0-react';
 import {
   Box,
   Button,
@@ -9,7 +8,8 @@ import {
   IconButton,
   TextField,
   Card,
-  CardContent
+  CardContent,
+  Alert
 } from '@mui/material';
 import MicIcon from '@mui/icons-material/Mic';
 import StopIcon from '@mui/icons-material/Stop';
@@ -37,11 +37,11 @@ interface AudioRecorderProps {
 }
 
 const AudioRecorder: React.FC<AudioRecorderProps> = ({ selectedEmail, onDraftSaved }) => {
-  const { getAccessTokenSilently } = useAuth0();
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const audioChunksRef = useRef<Blob[]>([]);
   
   const [isRecording, setIsRecording] = useState(false);
+  const [audioBlob, setAudioBlob] = useState<Blob | null>(null);
   const [transcription, setTranscription] = useState('');
   const [draftReply, setDraftReply] = useState('');
   const [processingAudio, setProcessingAudio] = useState(false);
@@ -80,6 +80,7 @@ const AudioRecorder: React.FC<AudioRecorderProps> = ({ selectedEmail, onDraftSav
       mediaRecorderRef.current.onstop = () => {
         const audioBlob = new Blob(audioChunksRef.current, { type: mimeType });
         console.log('Recording stopped. Blob type:', audioBlob.type, 'size:', audioBlob.size);
+        setAudioBlob(audioBlob);
         processAudioToText(audioBlob);
       };
 
@@ -150,8 +151,7 @@ const AudioRecorder: React.FC<AudioRecorderProps> = ({ selectedEmail, onDraftSav
     setSuccess(null);
     
     try {
-      const token = await getAccessTokenSilently();
-      await createDraft(token, {
+      await createDraft({
         to: selectedEmail.from.email,
         subject: `Re: ${selectedEmail.subject}`,
         body: draftReply

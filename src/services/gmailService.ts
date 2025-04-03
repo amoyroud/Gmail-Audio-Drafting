@@ -1,179 +1,329 @@
-import axios from 'axios';
 import { Email, DraftEmail } from '../types/types';
 
-// Gmail API base URL
-const API_BASE_URL = 'https://www.googleapis.com/gmail/v1';
-
-// Mock data for development - will be replaced with actual API calls
-const mockEmails: Email[] = [
-  {
-    id: 'email1',
-    subject: 'Project Update - Q2 Roadmap',
-    from: {
-      name: 'John Smith',
-      email: 'john.smith@example.com'
-    },
-    date: '2024-03-15T10:00:00Z',
-    body: `Hi there,
-
-I wanted to provide an update on our Q2 roadmap. We've made significant progress on the key initiatives we discussed last month. Here's a quick summary:
-
-1. Mobile App Redesign - 75% complete, on track for May 15 release
-2. API Integration - Completed ahead of schedule
-3. Performance Optimization - Started last week, initial results are promising
-
-Let me know if you have any questions or concerns about the timeline.
-
-Best regards,
-John`,
-    snippet: 'I wanted to provide an update on our Q2 roadmap. We\'ve made significant progress...',
-    unread: true
-  },
-  {
-    id: 'email2',
-    subject: 'Meeting Invitation: Strategy Planning',
-    from: {
-      name: 'Sarah Johnson',
-      email: 'sarah.j@example.org'
-    },
-    date: '2024-03-14T15:30:00Z',
-    body: `Hello,
-
-I'd like to invite you to our quarterly strategy planning session next Friday at 10:00 AM EST. Please come prepared with your team's goals for Q3.
-
-The meeting will be held in Conference Room A and will last approximately 2 hours. Remote participation is available through the usual video conferencing link.
-
-Please confirm your attendance by Wednesday.
-
-Regards,
-Sarah Johnson
-Director of Operations`,
-    snippet: 'I\'d like to invite you to our quarterly strategy planning session next Friday...',
-    unread: false
-  },
-  {
-    id: 'email3',
-    subject: 'Urgent: System Maintenance Tonight',
-    from: {
-      name: 'IT Department',
-      email: 'it-noreply@example.com'
-    },
-    date: '2024-03-14T09:00:00Z',
-    body: `NOTICE: PLANNED SYSTEM MAINTENANCE
-
-Our team will be performing critical system updates tonight between 11:00 PM and 3:00 AM EST. During this time, the following services will be unavailable:
-
-- Customer Portal
-- Internal Knowledge Base
-- Email System (intermittent outages only)
-
-Please save any work in progress before 10:30 PM to avoid data loss. The maintenance is necessary to apply security patches and performance improvements.
-
-If you have any concerns, please contact the IT help desk at ext. 4567.
-
-Thank you for your understanding.
-
-IT Department`,
-    snippet: 'Our team will be performing critical system updates tonight between 11:00 PM and 3:00 AM EST...',
-    unread: true
+// Load Google Identity Services script
+const loadGisScript = async (): Promise<void> => {
+  if (document.querySelector('script[src="https://accounts.google.com/gsi/client"]')) {
+    return new Promise<void>((resolve) => {
+      if (window.google?.accounts) {
+        resolve();
+      } else {
+        const checkGis = setInterval(() => {
+          if (window.google?.accounts) {
+            clearInterval(checkGis);
+            resolve();
+          }
+        }, 100);
+      }
+    });
   }
+
+  return new Promise((resolve, reject) => {
+    const script = document.createElement('script');
+    script.src = 'https://accounts.google.com/gsi/client';
+    script.async = true;
+    script.defer = true;
+    script.onload = () => {
+      const checkGis = setInterval(() => {
+        if (window.google?.accounts) {
+          clearInterval(checkGis);
+          resolve();
+        }
+      }, 100);
+    };
+    script.onerror = () => reject(new Error('Failed to load Google Identity Services script'));
+    document.head.appendChild(script);
+  });
+};
+
+// Gmail API configuration
+const GMAIL_SCOPES = process.env.REACT_APP_GMAIL_API_SCOPE?.split(' ') || [
+  'https://www.googleapis.com/auth/gmail.readonly',
+  'https://www.googleapis.com/auth/gmail.compose',
+  'https://www.googleapis.com/auth/gmail.metadata'
 ];
 
+const CLIENT_ID = process.env.REACT_APP_GOOGLE_CLIENT_ID;
+const API_KEY = process.env.REACT_APP_GOOGLE_API_KEY;
+
+declare global {
+  interface Window {
+    google: any;
+    gapi: any;
+    googleAuthInitialized: boolean;
+    googleTokenClient: any;
+    tokenClient: any;
+  }
+}
+
+// Track initialization status
+let isInitializing = false;
+let initPromise: Promise<void> | null = null;
+
 /**
- * Fetch emails from Gmail
- * @param token Auth token
- * @returns List of emails
+ * Initialize the Gmail API client using Google Identity Services
  */
-export const fetchEmails = async (token: string): Promise<Email[]> => {
-  // In a production environment, this would fetch emails from the Gmail API
-  // For development, we return mock data
+export const initGmailClient = async (): Promise<void> => {
+  console.log('initGmailClient: Starting initialization');
   
-  // This function would normally look like this:
-  /*
+  if (window.googleAuthInitialized) {
+    console.log('initGmailClient: Already initialized');
+    return;
+  }
+  
+  if (isInitializing && initPromise) {
+    console.log('initGmailClient: Already initializing');
+    return initPromise;
+  }
+  
+  isInitializing = true;
+  initPromise = new Promise<void>(async (resolve, reject) => {
+    try {
+      if (!CLIENT_ID || !API_KEY) {
+        throw new Error('Google client ID or API key not configured');
+      }
+
+      // Load GIS script
+      console.log('Loading GIS script...');
+      await loadGisScript();
+      console.log('GIS script loaded successfully');
+
+      // Initialize token client
+      console.log('Initializing token client...');
+      const tokenClient = window.google.accounts.oauth2.initTokenClient({
+        client_id: CLIENT_ID,
+        scope: GMAIL_SCOPES.join(' '),
+        callback: async (tokenResponse: any) => {
+          if (tokenResponse.error) {
+            console.error('Token error:', tokenResponse);
+            reject(tokenResponse);
+            return;
+          }
+
+          try {
+            // Load Gmail API
+            await new Promise<void>((resolveGapi) => {
+              const script = document.createElement('script');
+              script.src = 'https://apis.google.com/js/api.js';
+              script.onload = () => {
+                window.gapi.load('client', async () => {
+                  try {
+                    await window.gapi.client.init({
+                      apiKey: API_KEY,
+                      discoveryDocs: ['https://www.googleapis.com/discovery/v1/apis/gmail/v1/rest']
+                    });
+                    
+                    // Set the token
+                    window.gapi.client.setToken({
+                      access_token: tokenResponse.access_token
+                    });
+                    
+                    localStorage.setItem('gmail_auth_code', tokenResponse.access_token);
+                    window.googleAuthInitialized = true;
+                    window.dispatchEvent(new Event('gmail_authenticated'));
+                    resolveGapi();
+                  } catch (error) {
+                    console.error('GAPI init error:', error);
+                    reject(error);
+                  }
+                });
+              };
+              script.onerror = () => reject(new Error('Failed to load GAPI'));
+              document.head.appendChild(script);
+            });
+
+            resolve();
+          } catch (error) {
+            console.error('Token callback error:', error);
+            reject(error);
+          }
+        }
+      });
+
+      // Store token client for later use
+      window.tokenClient = tokenClient;
+      
+      // Request initial token
+      tokenClient.requestAccessToken({ prompt: 'consent' });
+
+    } catch (error) {
+      console.error('Error in initGmailClient:', error);
+      reject(error);
+    } finally {
+      isInitializing = false;
+    }
+  });
+  
+  return initPromise;
+};
+
+/**
+ * Sign in to Gmail
+ */
+export const signIn = async (): Promise<void> => {
   try {
-    const response = await axios.get(`${API_BASE_URL}/users/me/messages`, {
-      headers: {
-        Authorization: `Bearer ${token}`,
-      },
-      params: {
-        maxResults: 10,
-        q: 'in:inbox',
-      },
+    // Initialize client if not already done
+    if (!window.googleAuthInitialized) {
+      await initGmailClient();
+    }
+
+    // Get token client
+    const tokenClient = window.googleTokenClient;
+    if (!tokenClient) {
+      throw new Error('Token client not initialized');
+    }
+
+    // Request token with prompt
+    return new Promise<void>((resolve, reject) => {
+      tokenClient.callback = async (response: any) => {
+        if (response.error !== undefined) {
+          reject(response);
+          return;
+        }
+
+        try {
+          // Store the token
+          const token = response.access_token;
+          window.gapi.client.setToken({ access_token: token });
+          localStorage.setItem('gmail_auth_code', token);
+          window.dispatchEvent(new Event('gmail_authenticated'));
+          resolve();
+        } catch (error) {
+          reject(error);
+        }
+      };
+
+      // Prompt the user to select an account
+      tokenClient.requestAccessToken({
+        prompt: 'select_account'
+      });
+    });
+  } catch (error) {
+    console.error('Error signing in:', error);
+    throw error;
+  }
+};
+
+/**
+ * Sign out from Gmail
+ */
+export const signOut = async (): Promise<void> => {
+  try {
+    // Just clear local storage - there's no explicit revoke in this flow
+    localStorage.removeItem('gmail_auth_code');
+    localStorage.removeItem('gmail_token');
+    
+    // Dispatch event to update UI
+    window.dispatchEvent(new Event('gmail_signed_out'));
+  } catch (error) {
+    console.error('Error signing out:', error);
+    throw error;
+  }
+};
+
+/**
+ * Check if user is signed in
+ */
+export const isSignedIn = (): boolean => {
+  const token = localStorage.getItem('gmail_auth_code');
+  return !!token && window.googleAuthInitialized === true;
+};
+
+/**
+ * Ensure authentication is valid and refresh if needed
+ */
+const ensureAuthenticated = async (): Promise<void> => {
+  if (!window.googleAuthInitialized) {
+    await initGmailClient();
+  }
+
+  const token = localStorage.getItem('gmail_auth_code');
+  if (!token) {
+    await signIn();
+    return;
+  }
+
+  try {
+    // Try to make a test request
+    await window.gapi.client.gmail.users.getProfile({ userId: 'me' });
+  } catch (error: any) {
+    if (error?.status === 401) {
+      // Token is invalid or expired, try to refresh
+      await signIn();
+    } else {
+      throw error;
+    }
+  }
+};
+
+export const fetchEmails = async (): Promise<Email[]> => {
+  try {
+    await ensureAuthenticated();
+
+    // Get messages from Gmail API without search query
+    const response = await window.gapi.client.gmail.users.messages.list({
+      userId: 'me',
+      maxResults: 10,
+      labelIds: ['INBOX']
     });
 
-    // Process and return the email data
-    return processGmailResponse(response.data);
+    if (!response.result.messages) {
+      return [];
+    }
+
+    // Fetch detailed information for each message
+    const emails = await Promise.all(
+      response.result.messages.map(async (message: any) => {
+        const details = await window.gapi.client.gmail.users.messages.get({
+          userId: 'me',
+          id: message.id,
+          format: 'metadata',
+          metadataHeaders: ['Subject', 'From', 'Date']
+        });
+
+        const headers = details.result.payload.headers;
+        const subject = headers.find((h: any) => h.name === 'Subject')?.value || '(no subject)';
+        const from = headers.find((h: any) => h.name === 'From')?.value || '';
+        const date = headers.find((h: any) => h.name === 'Date')?.value || '';
+
+        // Parse the from field
+        const fromMatch = from.match(/(?:"?([^"]*?)"?\s)?(?:<)?([^>]+)(?:>)?/);
+        const fromName = fromMatch ? fromMatch[1] || fromMatch[2] : from;
+        const fromEmail = fromMatch ? fromMatch[2] : from;
+
+        return {
+          id: message.id,
+          subject,
+          from: {
+            name: fromName,
+            email: fromEmail
+          },
+          date: new Date(date).toISOString(),
+          snippet: details.result.snippet || '',
+          body: details.result.snippet || '', // For now, just using snippet as body
+          unread: details.result.labelIds?.includes('UNREAD') || false
+        };
+      })
+    );
+
+    return emails;
   } catch (error) {
     console.error('Error fetching emails:', error);
     throw error;
   }
-  */
-  
-  // Return mock data for now
-  return Promise.resolve([...mockEmails]); // Remove setTimeout to prevent potential memory leaks
 };
 
-/**
- * Get a specific email by ID
- * @param token Auth token
- * @param emailId Email ID
- * @returns Email details
- */
-export const getEmailById = async (token: string, emailId: string): Promise<Email> => {
-  const email = mockEmails.find(e => e.id === emailId);
-  if (email) {
-    return Promise.resolve({...email});
+export const getEmailById = async (emailId: string): Promise<Email> => {
+  const emails = await fetchEmails();
+  const email = emails.find(e => e.id === emailId);
+  
+  if (!email) {
+    throw new Error('Email not found');
   }
-  return Promise.reject(new Error('Email not found'));
+  
+  return email;
 };
 
-/**
- * Create a draft email in Gmail
- * @param token Auth token
- * @param draft Draft email details
- */
-export const createDraft = async (token: string, draft: DraftEmail): Promise<void> => {
-  // In a production environment, this would create a draft in Gmail
-  // For development, we just log the draft data
-  
-  // This function would normally look like this:
-  /*
-  try {
-    const email = [
-      'Content-Type: text/plain; charset="UTF-8"',
-      'MIME-Version: 1.0',
-      'Content-Transfer-Encoding: 7bit',
-      `To: ${draft.to}`,
-      `Subject: ${draft.subject}`,
-      '',
-      draft.body
-    ].join('\n');
-
-    const encodedEmail = btoa(unescape(encodeURIComponent(email))).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
-
-    await axios.post(`${API_BASE_URL}/users/me/drafts`, {
-      message: {
-        raw: encodedEmail
-      }
-    }, {
-      headers: {
-        Authorization: `Bearer ${token}`,
-        'Content-Type': 'application/json'
-      }
-    });
-  } catch (error) {
-    console.error('Error creating draft:', error);
-    throw error;
-  }
-  */
-  
-  // Log the draft for development
-  console.log('Draft created:', draft);
-  
-  // Simulate API call
-  return new Promise(resolve => {
-    setTimeout(() => {
-      resolve();
-    }, 1000); // Simulate network delay
-  });
+export const createDraft = async (draft: DraftEmail): Promise<void> => {
+  console.log('Creating draft:', draft);
+  // Mock implementation, in a real app this would use Gmail API
 }; 

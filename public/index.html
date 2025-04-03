@@ -2,13 +2,36 @@
 <html lang="en">
   <head>
     <meta charset="utf-8" />
-    <link rel="icon" href="%PUBLIC_URL%/favicon.ico" />
+    <!-- Remove CSP temporarily to ensure Google auth works properly -->
+    <!-- <meta http-equiv="Content-Security-Policy" content="default-src 'self' https://*.google.com https://*.gstatic.com https://*.googleapis.com; script-src 'self' 'unsafe-inline' 'unsafe-eval' https://*.google.com https://*.gstatic.com https://*.googleapis.com; frame-src 'self' https://*.google.com https://accounts.google.com; connect-src 'self' https://*.google.com https://*.googleapis.com https://accounts.google.com; style-src 'self' 'unsafe-inline' https://*.google.com; img-src 'self' data: https://*.google.com https://*.gstatic.com;" /> -->
+    <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🎙️</text></svg>" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <meta name="theme-color" content="#000000" />
-    <meta name="description" content="Mobile Gmail response assistant with speech-to-text and AI capabilities" />
-    <link rel="apple-touch-icon" href="%PUBLIC_URL%/logo192.png" />
+    <meta name="description" content="Audio Email Assistant - Create email drafts using voice" />
+    <link rel="apple-touch-icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🎙️</text></svg>" />
     <link rel="manifest" href="%PUBLIC_URL%/manifest.json" />
-    <title>Email Draft Assistant</title>
+    <!-- Pre-load Google Identity Services -->
+    <script src="https://accounts.google.com/gsi/client" async defer></script>
+    <!-- Debug script for Google auth -->
+    <script>
+      window.onGoogleLibraryLoad = function() {
+        console.log("Google library loaded successfully");
+      };
+      
+      // Debug helper
+      function checkGoogleLibraryStatus() {
+        if (window.google && window.google.accounts) {
+          console.log("Google Identity Services library loaded and available");
+        } else {
+          console.log("Google Identity Services library not yet available");
+          setTimeout(checkGoogleLibraryStatus, 500);
+        }
+      }
+      
+      // Start checking
+      setTimeout(checkGoogleLibraryStatus, 1000);
+    </script>
+    <title>Audio Email Assistant</title>
   </head>
   <body>
     <noscript>You need to enable JavaScript to run this app.</noscript>

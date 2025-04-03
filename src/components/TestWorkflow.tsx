@@ -10,7 +10,6 @@ interface TestStep {
 
 const TestWorkflow: React.FC = () => {
   const [steps, setSteps] = useState<TestStep[]>([
-    { name: 'Auth0 Connection', status: 'pending' },
     { name: 'Audio Recording', status: 'pending' },
     { name: 'Transcription', status: 'pending' },
     { name: 'Email Generation', status: 'pending' },
@@ -29,19 +28,14 @@ const TestWorkflow: React.FC = () => {
     setSteps(steps.map(step => ({ ...step, status: 'pending' })));
 
     try {
-      // Test Auth0 Connection
-      updateStep(0, 'running');
-      logger.info('Auth0', 'Testing Auth0 connection...');
-      // Add actual Auth0 test logic here
-      updateStep(0, 'success', 'Auth0 connection successful');
-
       // Test Audio Recording
-      updateStep(1, 'running');
+      updateStep(0, 'running');
       logger.info('Audio', 'Testing audio recording...');
       // Add actual audio recording test logic here
-      updateStep(1, 'success', 'Audio recording successful');
+      updateStep(0, 'success', 'Audio recording successful');
 
       // Test Transcription
+      updateStep(1, 'running');
       updateStep(2, 'running');
       logger.info('Transcription', 'Testing transcription service...');
       // Add actual transcription test logic here

@@ -1,6 +1,5 @@
-import React from 'react';
-import { Routes, Route, Navigate } from 'react-router-dom';
-import { useAuth0 } from '@auth0/auth0-react';
+import React, { useState, useEffect, useCallback } from 'react';
+import { Routes, Route, Navigate, useNavigate } from 'react-router-dom';
 import { ThemeProvider, createTheme } from '@mui/material/styles';
 import CssBaseline from '@mui/material/CssBaseline';
 
@@ -14,6 +13,7 @@ import ServiceTester from './components/ServiceTester';
 // Components
 import Layout from './components/Layout';
 import LoadingScreen from './components/LoadingScreen';
+import { isSignedIn } from './services/gmailService';
 
 // Create a responsive theme
 const theme = createTheme({
@@ -38,20 +38,57 @@ const theme = createTheme({
 
 // Define a protected route component
 const ProtectedRoute = ({ children }: { children: React.ReactNode }) => {
-  const { isAuthenticated, isLoading } = useAuth0();
+  const [loading, setLoading] = useState(true);
+  const [authenticated, setAuthenticated] = useState(false);
+  const navigate = useNavigate();
 
-  if (isLoading) {
+  // Check authentication on mount and listen for changes
+  useEffect(() => {
+    console.log('ProtectedRoute: Checking authentication');
+    
+    // Initial auth check
+    const authStatus = isSignedIn();
+    console.log('ProtectedRoute: Initial auth status is', authStatus);
+    setAuthenticated(authStatus);
+    setLoading(false);
+    
+    // Set up listener for auth changes
+    const handleAuthChange = () => {
+      console.log('ProtectedRoute: Authentication event received');
+      setAuthenticated(true);
+    };
+    
+    const handleSignOut = () => {
+      console.log('ProtectedRoute: Sign out event received');
+      setAuthenticated(false);
+      navigate('/login', { replace: true });
+    };
+    
+    window.addEventListener('gmail_authenticated', handleAuthChange);
+    window.addEventListener('gmail_signed_out', handleSignOut);
+    
+    return () => {
+      window.removeEventListener('gmail_authenticated', handleAuthChange);
+      window.removeEventListener('gmail_signed_out', handleSignOut);
+    };
+  }, [navigate]);
+
+  if (loading) {
     return <LoadingScreen />;
   }
 
-  if (!isAuthenticated) {
+  if (!authenticated) {
+    console.log('ProtectedRoute: Not authenticated, redirecting to login');
     return <Navigate to="/login" replace />;
   }
 
+  console.log('ProtectedRoute: Authenticated, rendering children');
   return <>{children}</>;
 };
 
 function App() {
+  console.log('App: Rendering App component');
+  
   return (
     <ThemeProvider theme={theme}>
       <CssBaseline />

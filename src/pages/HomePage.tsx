@@ -1,6 +1,5 @@
-import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { useAuth0 } from '@auth0/auth0-react';
 import {
   Box,
   Paper,
@@ -30,14 +29,12 @@ import SortIcon from '@mui/icons-material/Sort';
 import { fetchEmails } from '../services/gmailService';
 import { Email } from '../types/types';
 import AudioRecorder from '../components/AudioRecorder';
+import GmailAuth from '../components/GmailAuth';
 
 type SortOption = 'date' | 'sender' | 'subject';
 type FilterOption = 'all' | 'unread' | 'read';
 
 const HomePage: React.FC = () => {
-  console.log('HomePage: Component rendering');
-  
-  const { getAccessTokenSilently } = useAuth0();
   const navigate = useNavigate();
   const theme = useTheme();
   const isMobile = useMediaQuery(theme.breakpoints.down('sm'));
@@ -50,66 +47,31 @@ const HomePage: React.FC = () => {
   const [sortBy, setSortBy] = useState<SortOption>('date');
   const [filterBy, setFilterBy] = useState<FilterOption>('all');
   const [showFilters, setShowFilters] = useState(false);
-
-  // Memoize the token getter to prevent unnecessary re-renders
-  const getToken = useCallback(async () => {
-    try {
-      return await getAccessTokenSilently();
-    } catch (error) {
-      console.error('Error getting token:', error);
-      throw error;
-    }
-  }, [getAccessTokenSilently]);
-
-  const fetchEmailsList = useCallback(async (mounted: boolean) => {
-    console.log('HomePage: Fetching emails, mounted:', mounted);
-    if (!mounted) return;
-    
-    setLoading(true);
-    setError(null);
-    
-    try {
-      console.log('HomePage: Getting access token');
-      const token = await getToken();
-      console.log('HomePage: Got access token, fetching emails');
-      const emailList = await fetchEmails(token);
-      console.log('HomePage: Got emails:', emailList.length);
-      if (mounted) {
-        setEmails(emailList);
-      }
-    } catch (err) {
-      console.error('HomePage: Error fetching emails:', err);
-      if (mounted) {
-        setError('Failed to load emails. Please try again.');
-      }
-    } finally {
-      if (mounted) {
-        setLoading(false);
-      }
-    }
-  }, [getToken]);
-
-  // Use a ref to track if we've already fetched emails
-  const initialFetchDone = React.useRef(false);
+  const [isAuthenticated, setIsAuthenticated] = useState(false);
 
   useEffect(() => {
-    console.log('HomePage: useEffect running, initialFetchDone:', initialFetchDone.current);
-    let mounted = true;
-    
-    if (!initialFetchDone.current) {
-      initialFetchDone.current = true;
-      fetchEmailsList(mounted);
-    }
-
-    return () => {
-      console.log('HomePage: useEffect cleanup');
-      mounted = false;
+    const fetchEmailsList = async () => {
+      if (!isAuthenticated) return;
+      
+      setLoading(true);
+      setError(null);
+      
+      try {
+        const emailList = await fetchEmails();
+        setEmails(emailList);
+      } catch (err) {
+        console.error('Error fetching emails:', err);
+        setError('Failed to load emails. Please try again.');
+      } finally {
+        setLoading(false);
+      }
     };
-  }, [fetchEmailsList]);
+    
+    fetchEmailsList();
+  }, [isAuthenticated]);
 
-  const handleEmailClick = (email: Email) => {
-    setSelectedEmail(email);
-    navigate(`/email/${email.id}`);
+  const handleAuthStateChange = (authenticated: boolean) => {
+    setIsAuthenticated(authenticated);
   };
 
   const formatDate = (dateString: string) => {
@@ -153,6 +115,20 @@ const HomePage: React.FC = () => {
       }
     });
 
+  if (!isAuthenticated) {
+    return (
+      <Box sx={{ maxWidth: 600, mx: 'auto', mt: 4 }}>
+        <Typography variant="h5" gutterBottom>
+          Welcome to Audio Email Assistant
+        </Typography>
+        <Typography variant="body1" sx={{ mb: 3 }}>
+          Please sign in with your Gmail account to continue.
+        </Typography>
+        <GmailAuth onAuthStateChange={handleAuthStateChange} />
+      </Box>
+    );
+  }
+
   if (loading) {
     return (
       <Box sx={{ display: 'flex', justifyContent: 'center', mt: 4 }}>
@@ -173,6 +149,7 @@ const HomePage: React.FC = () => {
           Your Inbox
         </Typography>
         <Box sx={{ display: 'flex', gap: 1 }}>
+          <GmailAuth onAuthStateChange={handleAuthStateChange} />
           <Tooltip title="Toggle filters">
             <IconButton onClick={() => setShowFilters(!showFilters)}>
               <FilterListIcon />
@@ -244,77 +221,63 @@ const HomePage: React.FC = () => {
           <List>
             {filteredEmails.map((email, index) => (
               <React.Fragment key={email.id}>
-                <ListItem disablePadding>
-                  <ListItemButton 
-                    selected={selectedEmail?.id === email.id}
-                    onClick={() => handleEmailClick(email)}
-                  >
-                    <ListItemText
-                      primary={
-                        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                          <Typography 
-                            component="span" 
-                            variant="subtitle1"
-                            sx={{ fontWeight: email.unread ? 'bold' : 'normal' }}
-                          >
-                            {email.from.name || email.from.email}
-                          </Typography>
-                          <Typography 
-                            component="span" 
-                            variant="body2" 
-                            color="text.secondary"
-                          >
-                            {formatDate(email.date)}
-                          </Typography>
-                        </Box>
-                      }
-                      secondary={
-                        <Box>
-                          <Typography 
-                            component="div" 
-                            variant="body2"
-                            sx={{ fontWeight: email.unread ? 'bold' : 'normal' }}
-                          >
-                            {email.subject}
-                          </Typography>
-                          <Typography 
-                            component="div"
-                            variant="body2" 
-                            color="text.secondary"
-                            sx={{ 
-                              display: '-webkit-box',
-                              WebkitLineClamp: 2,
-                              WebkitBoxOrient: 'vertical',
-                              overflow: 'hidden'
-                            }}
-                          >
-                            {email.snippet}
-                          </Typography>
-                        </Box>
-                      }
-                    />
-                  </ListItemButton>
-                </ListItem>
-                {index < filteredEmails.length - 1 && <Divider />}
+                {index > 0 && <Divider />}
+                <ListItemButton 
+                  selected={selectedEmail?.id === email.id}
+                  onClick={() => setSelectedEmail(email)}
+                >
+                  <ListItemText
+                    primary={
+                      <Box sx={{ display: 'flex', justifyContent: 'space-between' }}>
+                        <Typography 
+                          variant="subtitle2"
+                          sx={{ 
+                            fontWeight: email.unread ? 700 : 400,
+                            flex: 1,
+                            mr: 2
+                          }}
+                        >
+                          {email.from.name || email.from.email}
+                        </Typography>
+                        <Typography variant="caption" color="text.secondary">
+                          {formatDate(email.date)}
+                        </Typography>
+                      </Box>
+                    }
+                    secondary={
+                      <>
+                        <Typography
+                          variant="body2"
+                          sx={{ 
+                            fontWeight: email.unread ? 700 : 400,
+                            color: 'text.primary'
+                          }}
+                        >
+                          {email.subject}
+                        </Typography>
+                        <Typography variant="body2" color="text.secondary" noWrap>
+                          {email.snippet}
+                        </Typography>
+                      </>
+                    }
+                  />
+                </ListItemButton>
               </React.Fragment>
             ))}
           </List>
         </Paper>
 
-        {/* Audio Recorder and Draft Section */}
+        {/* Audio Recorder */}
         {selectedEmail && (
-          <Box sx={{ 
-            flex: 1, 
-            minWidth: isMobile ? '100%' : '50%'
+          <Paper sx={{ 
+            p: 2,
+            flex: 1,
+            maxHeight: 'calc(100vh - 200px)',
+            overflow: 'auto',
+            minWidth: isMobile ? '100%' : '40%'
           }}>
-            <AudioRecorder 
-              selectedEmail={selectedEmail}
-              onDraftSaved={() => {
-                // Optionally refresh the email list or update the selected email's status
-                setSelectedEmail(null);
-              }}
-            />
-          </Box>
+            <AudioRecorder selectedEmail={selectedEmail} />
+          </Paper>
         )}
       </Box>
     </Box>

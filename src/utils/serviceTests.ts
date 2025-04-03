@@ -6,16 +6,7 @@ interface ServiceTestResult {
   error?: any;
 }
 
-export const testAuth0Connection = async (): Promise<ServiceTestResult> => {
-  try {
-    // Add Auth0 connection test logic here
-    logger.info('Auth0', 'Testing Auth0 connection...');
-    return { success: true, message: 'Auth0 connection successful' };
-  } catch (error) {
-    logger.error('Auth0', 'Auth0 connection failed', error);
-    return { success: false, message: 'Auth0 connection failed', error };
-  }
-};
+
 
 export const testAudioRecording = async (): Promise<ServiceTestResult> => {
   try {
@@ -65,7 +56,6 @@ export const testGmailDraftSaving = async (): Promise<ServiceTestResult> => {
 
 export const runAllTests = async (): Promise<ServiceTestResult[]> => {
   const tests = [
-    { name: 'Auth0', fn: testAuth0Connection },
     { name: 'Audio Recording', fn: testAudioRecording },
     { name: 'Transcription', fn: testTranscriptionService },
     { name: 'Email Generation', fn: testEmailGeneration },

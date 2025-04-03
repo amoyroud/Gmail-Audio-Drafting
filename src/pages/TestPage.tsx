@@ -12,7 +12,6 @@ interface TestResult {
 const TestPage: React.FC = () => {
   const [isRunning, setIsRunning] = useState(false);
   const [results, setResults] = useState<TestResult[]>([
-    { name: 'Auth0 Connection', status: 'pending' },
     { name: 'Audio Recording', status: 'pending' },
     { name: 'Transcription Service', status: 'pending' },
     { name: 'Email Generation', status: 'pending' },
