@@ -39,6 +39,28 @@ interface AudioRecorderProps {
   onDraftSaved?: () => void;
 }
 
+// Common styles for consistency
+const spacing = {
+  xs: 2,  // 16px
+  sm: 3,  // 24px
+  md: 4   // 32px
+};
+
+const commonButtonStyles = {
+  borderRadius: '8px',
+  px: 3,
+  py: 1.5,
+  minWidth: { xs: '200px', sm: '240px' }
+};
+
+const primaryButtonStyles = {
+  ...commonButtonStyles,
+  bgcolor: '#1a73e8',
+  '&:hover': {
+    bgcolor: '#1557b0'
+  }
+};
+
 const AudioRecorder: React.FC<AudioRecorderProps> = ({ selectedEmail, onDraftSaved }) => {
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const audioChunksRef = useRef<Blob[]>([]);
@@ -307,7 +329,8 @@ const AudioRecorder: React.FC<AudioRecorderProps> = ({ selectedEmail, onDraftSav
       <Paper 
           elevation={0}
           sx={{ 
-            p: { xs: 2, sm: 3 }, 
+            p: { xs: spacing.xs, sm: spacing.sm }, 
+            mt: spacing.sm, 
             borderRadius: '12px',
             border: '1px solid',
             borderColor: 'divider',
@@ -347,7 +370,8 @@ const AudioRecorder: React.FC<AudioRecorderProps> = ({ selectedEmail, onDraftSav
               backgroundColor: theme => theme.palette.mode === 'dark' ? 'rgba(0,0,0,0.5)' : 'rgba(0,0,0,0.05)',
               borderRadius: '12px',
               zIndex: 2,
-              padding: { xs: 2, sm: 3 }
+              padding: { xs: spacing.xs, sm: spacing.sm },
+              mt: spacing.sm
             }}
           >
             <Box 
@@ -434,40 +458,24 @@ const AudioRecorder: React.FC<AudioRecorderProps> = ({ selectedEmail, onDraftSav
           <Paper
             elevation={0}
             sx={{
-              p: { xs: 2, sm: 3 },
+              p: { xs: spacing.xs, sm: spacing.sm },
+              mt: spacing.sm,
               mb: 3,
               borderRadius: '12px',
+              backgroundColor: theme => theme.palette.mode === 'dark' ? 'rgba(255,255,255,0.03)' : 'rgba(0,0,0,0.01)',
               border: '1px solid',
               borderColor: 'divider'
             }}
           >
-              <Box sx={{
-              display: 'flex',
-              justifyContent: 'space-between',
-              alignItems: 'center',
-              mb: 2
-            }}>
-              <Typography variant="subtitle1" sx={{ fontWeight: 600, color: 'text.primary' }}>
-
-              </Typography>
-            </Box>
-            <Box sx={{
-              p: 2,
-              borderRadius: '8px',
-              backgroundColor: theme => theme.palette.mode === 'dark' ? 'rgba(255,255,255,0.03)' : 'rgba(0,0,0,0.01)',
-              border: '1px solid',
-              borderColor: 'divider'
-            }}>
-              <Typography 
-                variant="body2" 
-                sx={{ 
-                  whiteSpace: 'pre-wrap',
-                  lineHeight: 1.6
-                }}
-              >
-                {transcription}
-              </Typography>
-            </Box>
+            <Typography
+              variant="body2"
+              sx={{
+                whiteSpace: 'pre-wrap',
+                lineHeight: 1.6
+              }}
+            >
+              {transcription}
+            </Typography>
           </Paper>
         )}
       </Paper>
@@ -477,7 +485,8 @@ const AudioRecorder: React.FC<AudioRecorderProps> = ({ selectedEmail, onDraftSav
         <Paper 
           elevation={0}
           sx={{ 
-            p: { xs: 2, sm: 3 }, 
+            p: { xs: spacing.xs, sm: spacing.sm }, 
+            mt: spacing.sm, 
             mb: 3, 
             borderRadius: '12px',
             border: '1px solid',
@@ -561,7 +570,7 @@ const AudioRecorder: React.FC<AudioRecorderProps> = ({ selectedEmail, onDraftSav
           ) : (
             <Box 
               sx={{ 
-                p: 2, 
+                p: spacing.xs, 
                 borderRadius: '8px',
                 backgroundColor: theme => theme.palette.mode === 'dark' ? 'rgba(255,255,255,0.03)' : 'rgba(0,0,0,0.01)',
                 border: '1px solid',
@@ -581,7 +590,15 @@ const AudioRecorder: React.FC<AudioRecorderProps> = ({ selectedEmail, onDraftSav
           )}
 
           {draftReply && (
-            <Box sx={{ display: 'flex', justifyContent: 'space-between', mt: 3 }}>
+            <Box sx={{ 
+              display: 'flex', 
+              gap: spacing.sm,
+              mt: spacing.sm,
+              '& > button': {
+                flex: 1,
+                minWidth: 0
+              }
+            }}>
               <Button
                 variant="contained"
                 color="primary"
@@ -589,14 +606,12 @@ const AudioRecorder: React.FC<AudioRecorderProps> = ({ selectedEmail, onDraftSav
                 onClick={handleSaveDraft}
                 disabled={savingDraft || !draftReply}
                 sx={{ 
-                  borderRadius: '8px', 
-                  px: 3,
-                  py: 1.5,
+                  ...primaryButtonStyles,
                   boxShadow: 2,
-                  minWidth: { xs: '200px', sm: '240px' }
+                  height: 48
                 }}
               >
-                {savingDraft ? 'Saving...' : 'Save as Draft in Gmail'}
+                {savingDraft ? 'Saving...' : 'Save as Draft'}
               </Button>
               <Button
                 variant="contained"
@@ -605,13 +620,8 @@ const AudioRecorder: React.FC<AudioRecorderProps> = ({ selectedEmail, onDraftSav
                 disabled={!draftReply || processingAudio}
                 startIcon={<SendIcon />}
                 sx={{
-                  mt: 2,
-                  mb: 2,
-                  width: '100%',
-                  bgcolor: '#1a73e8',
-                  '&:hover': {
-                    bgcolor: '#1557b0'
-                  }
+                  ...primaryButtonStyles,
+                  height: 48
                 }}
               >
                 Send Email

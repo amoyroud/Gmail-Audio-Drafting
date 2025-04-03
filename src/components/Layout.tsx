@@ -13,6 +13,13 @@ interface LayoutProps {
   children: ReactNode;
 }
 
+// Common styles for consistency
+const spacing = {
+  xs: 2,  // 16px
+  sm: 3,  // 24px
+  md: 4   // 32px
+};
+
 const Layout: React.FC<LayoutProps> = ({ children }) => {
   const navigate = useNavigate();
   const theme = useTheme();
@@ -40,7 +47,12 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
   };
 
   return (
-    <Box sx={{ display: 'flex', flexDirection: 'column', minHeight: '100vh' }}>
+    <Box sx={{ 
+      display: 'flex', 
+      flexDirection: 'column', 
+      minHeight: '100vh',
+      backgroundColor: theme => theme.palette.mode === 'dark' ? '#121212' : '#ffffff'
+    }}>
       <AppBar position="static">
         <Toolbar>
           <Box 
@@ -103,24 +115,30 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
           </Menu>
         </Toolbar>
       </AppBar>
-      <Container maxWidth="lg" sx={{ 
-        flexGrow: 1, 
-        py: 3,
-        px: isMobile ? 1 : 3,
-        position: 'relative',
-        overflowX: 'hidden'
-      }}>
+      <Container 
+        maxWidth={false} 
+        sx={{ 
+          flexGrow: 1, 
+          py: spacing.sm,
+          px: isMobile ? spacing.xs : spacing.md,
+          position: 'relative',
+          overflowX: 'hidden',
+          maxWidth: '1600px',
+          mx: 'auto'
+        }}>
         {children}
       </Container>
       <Box 
         component="footer" 
         sx={{ 
-          py: 2, 
-          px: 2, 
+          py: spacing.xs, 
+          px: spacing.xs, 
           mt: 'auto', 
-          backgroundColor: theme.palette.grey[200],
+          backgroundColor: theme => theme.palette.mode === 'dark' ? 'rgba(255,255,255,0.05)' : theme.palette.grey[100],
           textAlign: 'center',
-          fontSize: '0.8rem'
+          fontSize: '0.8rem',
+          borderTop: '1px solid',
+          borderColor: theme => theme.palette.mode === 'dark' ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.1)'
         }}
       >
         <Typography variant="caption" color="text.secondary">
@@ -136,8 +154,8 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
             onClick={() => setIsRecorderOpen(true)}
             sx={{
               position: 'fixed',
-              bottom: { xs: 16, sm: 24 },
-              right: { xs: 16, sm: 24 },
+              bottom: { xs: spacing.xs * 4, sm: spacing.sm * 4 },
+              right: { xs: spacing.xs * 4, sm: spacing.sm * 4 },
               zIndex: theme.zIndex.modal + 1,
               transform: 'scale(1)',
               '&:hover': {
@@ -158,7 +176,7 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'center',
-              p: 2
+              p: spacing.xs
             }}
           >
             <Box sx={{
@@ -168,7 +186,7 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
               overflow: 'auto',
               bgcolor: 'background.paper',
               borderRadius: '12px',
-              p: { xs: 2, sm: 3 },
+              p: { xs: spacing.xs, sm: spacing.sm },
               boxShadow: theme.shadows[24]
             }}>
               {selectedEmail ? (
@@ -180,7 +198,7 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
                   }}
                 />
               ) : (
-                <Box sx={{ p: 3, textAlign: 'center' }}>
+                <Box sx={{ p: spacing.sm, textAlign: 'center' }}>
                   <Typography variant="body1" gutterBottom>
                     No email selected
                   </Typography>
