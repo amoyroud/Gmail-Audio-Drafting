@@ -15,30 +15,21 @@ import {
   useMediaQuery,
   useTheme,
   TextField,
-  FormControl,
-  InputLabel,
-  Select,
-  MenuItem,
   IconButton,
   Tooltip,
-  Button
 } from '@mui/material';
 import SearchIcon from '@mui/icons-material/Search';
 import ArchiveIcon from '@mui/icons-material/Archive';
-import FilterListIcon from '@mui/icons-material/FilterList';
-import SortIcon from '@mui/icons-material/Sort';
 
 // Services
-import { fetchEmails, archiveEmail, signOut } from '../services/gmailService';
+import { fetchEmails, archiveEmail } from '../services/gmailService';
 import { Email } from '../types/types';
 import AudioRecorder from '../components/AudioRecorder';
 import GmailAuth from '../components/GmailAuth';
-import ThemeToggle from '../components/ThemeToggle';
 import EmptyState from '../components/EmptyState';
 import { useEmail } from '../context/EmailContext';
 
-type SortOption = 'date' | 'sender' | 'subject';
-type FilterOption = 'all' | 'unread' | 'read';
+
 
 const HomePage: React.FC = () => {
   const navigate = useNavigate();
@@ -51,9 +42,6 @@ const HomePage: React.FC = () => {
   const [archiving, setArchiving] = useState<string | null>(null); // Track which email is being archived
   const { selectedEmail, setSelectedEmail, setIsRecorderOpen } = useEmail();
   const [searchQuery, setSearchQuery] = useState('');
-  const [sortBy, setSortBy] = useState<SortOption>('date');
-  const [filterBy, setFilterBy] = useState<FilterOption>('all');
-  const [showFilters, setShowFilters] = useState(false);
   const [isAuthenticated, setIsAuthenticated] = useState(false);
 
   useEffect(() => {
@@ -92,35 +80,17 @@ const HomePage: React.FC = () => {
     });
   };
 
-  // Filter and sort emails
+  // Filter emails by search query and sort by date (newest first)
   const filteredEmails = emails
     .filter(email => {
       // Apply search filter
-      const searchMatch = searchQuery === '' || 
+      return searchQuery === '' || 
         email.subject.toLowerCase().includes(searchQuery.toLowerCase()) ||
         email.from.name?.toLowerCase().includes(searchQuery.toLowerCase()) ||
         email.from.email.toLowerCase().includes(searchQuery.toLowerCase()) ||
         email.snippet.toLowerCase().includes(searchQuery.toLowerCase());
-
-      // Apply read/unread filter
-      const readMatch = filterBy === 'all' || 
-        (filterBy === 'unread' && email.unread) ||
-        (filterBy === 'read' && !email.unread);
-
-      return searchMatch && readMatch;
     })
-    .sort((a, b) => {
-      switch (sortBy) {
-        case 'date':
-          return new Date(b.date).getTime() - new Date(a.date).getTime();
-        case 'sender':
-          return (a.from.name || a.from.email).localeCompare(b.from.name || b.from.email);
-        case 'subject':
-          return a.subject.localeCompare(b.subject);
-        default:
-          return 0;
-      }
-    });
+    .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
 
   if (!isAuthenticated) {
     return (
@@ -176,67 +146,6 @@ const HomePage: React.FC = () => {
 
   return (
     <Box sx={{ p: { xs: 2, sm: 3 }, maxWidth: 1200, mx: 'auto', overflowX: 'hidden' }}>
-      {/* Header with app name and sign out */}
-      <Box sx={{ 
-        display: 'flex', 
-        justifyContent: 'space-between', 
-        alignItems: 'center', 
-        mb: 3,
-        flexWrap: 'wrap',
-        gap: { xs: 2, sm: 2 },
-        flexDirection: { xs: isMobile ? 'column' : 'row', sm: 'row' },
-        width: '100%'
-      }}>
-        <Box sx={{ 
-          display: 'flex', 
-          alignItems: 'center', 
-          gap: 1.5,
-          width: { xs: isMobile ? '100%' : 'auto', sm: 'auto' },
-          justifyContent: { xs: isMobile ? 'center' : 'flex-start', sm: 'flex-start' }
-        }}>
-          <Box 
-            component="img"
-            src="/logo.png"
-            alt="Audio Email Assistant Logo"
-            sx={{ 
-              width: 32, 
-              height: 32,
-              display: { xs: 'none', sm: 'block' }
-            }}
-          />
-          <Typography 
-            variant="h5" 
-            sx={{ 
-              fontWeight: 600,
-              background: 'linear-gradient(45deg, #2196F3 30%, #21CBF3 90%)',
-              WebkitBackgroundClip: 'text',
-              WebkitTextFillColor: 'transparent',
-              letterSpacing: '-0.5px'
-            }}
-          >
-            Audio Email Assistant
-          </Typography>
-        </Box>
-        <Box sx={{ 
-          display: 'flex', 
-          alignItems: 'center', 
-          gap: 1,
-          width: { xs: isMobile ? '100%' : 'auto', sm: 'auto' },
-          justifyContent: { xs: isMobile ? 'center' : 'flex-end', sm: 'flex-end' }
-        }}>
-          <ThemeToggle />
-          <Button
-            variant="outlined"
-            color="primary"
-            size="small"
-            onClick={() => signOut().then(() => setIsAuthenticated(false))}
-            startIcon={<Box component="span" sx={{ fontSize: '1.2rem' }}>👋</Box>}
-            sx={{ borderRadius: '20px' }}
-          >
-            Sign Out
-          </Button>
-        </Box>
-      </Box>
 
       {error && (
         <Alert 
@@ -251,7 +160,7 @@ const HomePage: React.FC = () => {
         </Alert>
       )}
 
-      {/* Search and Filters */}
+      {/* Search Bar */}
       <Paper 
         elevation={0}
         sx={{ 
@@ -264,112 +173,25 @@ const HomePage: React.FC = () => {
           width: '100%'
         }}
       >
-        <Box sx={{ 
-          display: 'flex', 
-          gap: 2, 
-          alignItems: 'center', 
-          flexWrap: 'wrap',
-          width: '100%',
-          flexDirection: { xs: isMobile ? 'column' : 'row', sm: 'row' }
-        }}>
-          <TextField
-            placeholder="Search emails"
-            variant="outlined"
-            size="small"
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-            InputProps={{
-              startAdornment: (
-                <SearchIcon color="action" sx={{ mr: 1 }} />
-              ),
-              sx: { 
-                borderRadius: '8px',
-                '& fieldset': { borderColor: 'divider' },
-                '&:hover fieldset': { borderColor: 'primary.main' },
-              }
-            }}
-            sx={{ 
-              flexGrow: 1,
-              width: { xs: isMobile ? '100%' : 'auto', sm: 'auto' }
-            }}
-          />
-          <Tooltip title="Show filters">
-            <IconButton 
-              onClick={() => setShowFilters(!showFilters)}
-              color={showFilters ? "primary" : "default"}
-              sx={{ 
-                border: '1px solid',
-                borderColor: showFilters ? 'primary.main' : 'divider',
-                borderRadius: '8px',
-                p: 1
-              }}
-            >
-              <FilterListIcon />
-            </IconButton>
-          </Tooltip>
-        </Box>
-
-      {showFilters && (
-        <Box 
-          sx={{ 
-            mt: 2, 
-            pt: 2,
-            display: 'flex', 
-            gap: 2, 
-            flexWrap: 'wrap',
-            borderTop: '1px solid',
-            borderColor: 'divider'
+        <TextField
+          placeholder="Search emails"
+          variant="outlined"
+          fullWidth
+          size="small"
+          value={searchQuery}
+          onChange={(e) => setSearchQuery(e.target.value)}
+          InputProps={{
+            startAdornment: (
+              <SearchIcon color="action" sx={{ mr: 1 }} />
+            ),
+            sx: { 
+              borderRadius: '8px',
+              '& fieldset': { borderColor: 'divider' },
+              '&:hover fieldset': { borderColor: 'primary.main' },
+            }
           }}
-        >
-          <FormControl 
-            size="small" 
-            sx={{ 
-              minWidth: 150,
-              '& .MuiOutlinedInput-root': {
-                borderRadius: '8px',
-                '& fieldset': { borderColor: 'divider' },
-                '&:hover fieldset': { borderColor: 'primary.main' },
-              }
-            }}
-          >
-            <InputLabel>Sort By</InputLabel>
-            <Select
-              value={sortBy}
-              label="Sort By"
-              onChange={(e) => setSortBy(e.target.value as SortOption)}
-              startAdornment={<SortIcon sx={{ ml: 1, mr: 1, fontSize: '1.2rem', color: 'action.active' }} />}
-            >
-              <MenuItem value="date">Date</MenuItem>
-              <MenuItem value="sender">Sender</MenuItem>
-              <MenuItem value="subject">Subject</MenuItem>
-            </Select>
-          </FormControl>
-          <FormControl 
-            size="small" 
-            sx={{ 
-              minWidth: 150,
-              '& .MuiOutlinedInput-root': {
-                borderRadius: '8px',
-                '& fieldset': { borderColor: 'divider' },
-                '&:hover fieldset': { borderColor: 'primary.main' },
-              }
-            }}
-          >
-            <InputLabel>Filter</InputLabel>
-            <Select
-              value={filterBy}
-              label="Filter"
-              onChange={(e) => setFilterBy(e.target.value as FilterOption)}
-              startAdornment={<FilterListIcon sx={{ ml: 1, mr: 1, fontSize: '1.2rem', color: 'action.active' }} />}
-            >
-              <MenuItem value="all">All</MenuItem>
-              <MenuItem value="unread">Unread</MenuItem>
-              <MenuItem value="read">Read</MenuItem>
-            </Select>
-          </FormControl>
-        </Box>
-      )}
-    </Paper>
+        />
+      </Paper>
 
     <Box sx={{ 
       display: 'flex', 
@@ -397,11 +219,9 @@ const HomePage: React.FC = () => {
             </Box>
           ) : filteredEmails.length === 0 ? (
             <EmptyState 
-              type={searchQuery || filterBy !== 'all' ? 'noResults' : 'noEmails'}
+              type={searchQuery ? 'noResults' : 'noEmails'}
               onAction={() => {
                 setSearchQuery('');
-                setFilterBy('all');
-                setSortBy('date');
                 // Refresh emails
                 setLoading(true);
                 fetchEmails().then(emailList => {
@@ -413,7 +233,7 @@ const HomePage: React.FC = () => {
                   setLoading(false);
                 });
               }}
-              actionLabel={searchQuery || filterBy !== 'all' ? 'Clear Filters' : 'Refresh'}
+              actionLabel={searchQuery ? 'Clear Search' : 'Refresh'}
             />
           ) : (
             filteredEmails.map((email, index) => (

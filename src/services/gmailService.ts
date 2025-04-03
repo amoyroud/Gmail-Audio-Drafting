@@ -358,12 +358,11 @@ export const getEmailById = async (emailId: string): Promise<Email> => {
   await ensureAuthenticated();
 
   try {
-    // Get the message with full headers but minimal body
+    // Get the full message including body
     const response = await window.gapi.client.gmail.users.messages.get({
       userId: 'me',
       id: emailId,
-      format: 'metadata',
-      metadataHeaders: ['Subject', 'From', 'Date', 'Content-Type']
+      format: 'full'
     });
 
     const message = response.result;
@@ -383,59 +382,80 @@ export const getEmailById = async (emailId: string): Promise<Email> => {
       }
 
       if (part.parts) {
-        // For multipart messages, prefer text/plain over text/html
-        const textPart = part.parts.find((p: any) => p.mimeType === 'text/plain') ||
-                        part.parts.find((p: any) => p.mimeType === 'text/html');
-        if (textPart) {
-          return extractTextFromPart(textPart);
+        let content = '';
+        // For multipart messages, concatenate all text parts
+        for (const p of part.parts) {
+          if (p.mimeType === 'text/plain' || p.mimeType === 'text/html') {
+            content += extractTextFromPart(p) + '\n';
+          } else if (p.parts) {
+            content += extractTextFromPart(p) + '\n';
+          }
         }
+        return content;
       }
 
       return '';
     };
 
     const cleanContent = (content: string): string => {
-      // First extract URLs to preserve them
-      const urls: string[] = [];
-      let cleaned = content.replace(/https?:\/\/[^\s<]+/g, (url) => {
-        urls.push(url);
-        return `__URL${urls.length - 1}__`;
-      });
+  // First extract URLs to preserve them
+  const urls: string[] = [];
+  let cleaned = content.replace(/https?:\/\/[^\s<]+/g, (url) => {
+    urls.push(url);
+    return `__URL${urls.length - 1}__`;
+  });
 
-      // Remove HTML tags
-      cleaned = cleaned.replace(/<[^>]*>/g, '');
-      
-      // Replace HTML entities
-      cleaned = cleaned.replace(/&nbsp;/g, ' ')
-        .replace(/&amp;/g, '&')
-        .replace(/&lt;/g, '<')
-        .replace(/&gt;/g, '>')
-        .replace(/&quot;/g, '"');
-      
-      // Remove email metadata
-      cleaned = cleaned.replace(/Content-Type:[^\n]*\n/g, '')
-        .replace(/Content-Transfer-Encoding:[^\n]*\n/g, '')
-        .replace(/--[0-9a-zA-Z]+/g, '')
-        .replace(/charset=[^\n]*\n/g, '')
-        .replace(/=\r\n/g, '') // Remove quoted-printable line breaks
-        .replace(/=[0-9A-F]{2}/g, ''); // Remove quoted-printable hex codes
-      
-      // Restore URLs
-      urls.forEach((url, index) => {
-        cleaned = cleaned.replace(`__URL${index}__`, url);
-      });
+  // Handle HTML content
+  if (cleaned.includes('<!DOCTYPE html>') || cleaned.includes('<html>')) {
+    // Extract text from HTML while preserving some formatting
+    cleaned = cleaned
+      .replace(/<br\s*\/?>/gi, '\n') // Convert <br> to newlines
+      .replace(/<p[^>]*>/gi, '\n') // Convert <p> to newlines
+      .replace(/<div[^>]*>/gi, '\n') // Convert <div> to newlines
+      .replace(/<li[^>]*>/gi, '\n• ') // Convert list items to bullet points
+      .replace(/<\/li>/gi, '') 
+      .replace(/<hr[^>]*>/gi, '\n---\n') // Convert horizontal rules to markdown
+      .replace(/<[^>]+>/g, ''); // Remove remaining HTML tags
+  } else {
+    // For plain text, just remove any stray HTML tags
+    cleaned = cleaned.replace(/<[^>]*>/g, '');
+  }
+  
+  // Replace HTML entities
+  cleaned = cleaned
+    .replace(/&nbsp;/g, ' ')
+    .replace(/&amp;/g, '&')
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>')
+    .replace(/&quot;/g, '"')
+    .replace(/&apos;/g, "'");
+  
+  // Remove email metadata while preserving content
+  cleaned = cleaned
+    .replace(/Content-Type:[^\n]*\n/g, '')
+    .replace(/Content-Transfer-Encoding:[^\n]*\n/g, '')
+    .replace(/--[0-9a-zA-Z]+(?:-)*(?:[0-9a-zA-Z]+)*$/gm, '') // Remove MIME boundaries
+    .replace(/charset=[^\n]*\n/g, '')
+    .replace(/=\r\n/g, '') // Remove quoted-printable line breaks
+    .replace(/=[0-9A-F]{2}/g, ''); // Remove quoted-printable hex codes
+  
+  // Restore URLs with proper formatting
+  urls.forEach((url, index) => {
+    cleaned = cleaned.replace(`__URL${index}__`, url);
+  });
 
-      // Clean up line breaks and whitespace
-      return cleaned
-        .split('\n')
-        .filter(line => 
-          !line.startsWith('Content-') && 
-          !line.startsWith('--') && 
-          !line.includes('charset=') &&
-          line.trim() !== ''
-        )
-        .join('\n')
-        .trim();
+  // Clean up line breaks and whitespace while preserving formatting
+  return cleaned
+    .split(/\r?\n/) // Split on both \r\n and \n
+    .filter(line => 
+      !line.startsWith('Content-') && 
+      !line.startsWith('--') && 
+      !line.includes('charset=')
+    )
+    .map(line => line.trimRight()) // Only trim right to preserve indentation
+    .join('\n')
+    .replace(/\n{3,}/g, '\n\n') // Replace multiple blank lines with double line break
+    .trim();
     };
 
     // Get raw content and clean it

@@ -19,28 +19,28 @@ const EmptyState: React.FC<EmptyStateProps> = ({ type, onAction, actionLabel }) 
     switch (type) {
       case 'noEmails':
         return {
-          icon: <EmailIcon sx={{ fontSize: 64, color: 'primary.main', opacity: 0.7 }} />,
+          icon: <EmailIcon sx={{ fontSize: 72, color: 'primary.main', opacity: 0.9 }} />,
           title: 'No Emails Found',
           description: 'Your inbox is empty or we couldn\'t fetch your emails. Check your connection or try refreshing.',
           showAction: true
         };
       case 'noResults':
         return {
-          icon: <SearchOffIcon sx={{ fontSize: 64, color: 'primary.main', opacity: 0.7 }} />,
+          icon: <SearchOffIcon sx={{ fontSize: 72, color: 'primary.main', opacity: 0.9 }} />,
           title: 'No Results Found',
-          description: 'We couldn\'t find any emails matching your search criteria. Try adjusting your filters or search terms.',
+          description: 'We couldn\'t find any emails matching your search criteria. Try adjusting your search terms.',
           showAction: true
         };
       case 'noSelection':
         return {
-          icon: <MicIcon sx={{ fontSize: 64, color: 'primary.main', opacity: 0.7 }} />,
+          icon: <MicIcon sx={{ fontSize: 72, color: 'primary.main', opacity: 0.9 }} />,
           title: 'Select an Email to Reply',
           description: 'Choose an email from the list to start recording your audio response.',
           showAction: false
         };
       default:
         return {
-          icon: <EmailIcon sx={{ fontSize: 64, color: 'primary.main', opacity: 0.7 }} />,
+          icon: <EmailIcon sx={{ fontSize: 72, color: 'primary.main', opacity: 0.9 }} />,
           title: 'Nothing to See Here',
           description: 'There\'s nothing to display at the moment.',
           showAction: false
@@ -58,7 +58,7 @@ const EmptyState: React.FC<EmptyStateProps> = ({ type, onAction, actionLabel }) 
         alignItems: 'center',
         justifyContent: 'center',
         textAlign: 'center',
-        py: 6,
+        py: { xs: 4, sm: 6 },
         px: 3,
         height: '100%',
         minHeight: 250,
@@ -67,27 +67,41 @@ const EmptyState: React.FC<EmptyStateProps> = ({ type, onAction, actionLabel }) 
       <Box
         sx={{
           mb: 3,
-          p: 2,
+          p: 3,
           borderRadius: '50%',
           backgroundColor: theme.palette.mode === 'dark' 
-            ? 'rgba(144, 202, 249, 0.08)' 
+            ? 'rgba(144, 202, 249, 0.12)' 
             : 'rgba(33, 150, 243, 0.08)',
           display: 'flex',
           alignItems: 'center',
-          justifyContent: 'center'
+          justifyContent: 'center',
+          boxShadow: theme.palette.mode === 'dark'
+            ? '0 0 20px rgba(144, 202, 249, 0.05)'
+            : '0 0 20px rgba(33, 150, 243, 0.05)',
+          transition: 'all 0.3s ease'
         }}
       >
         {content.icon}
       </Box>
-      <Typography variant="h6" gutterBottom fontWeight={600}>
+      <Typography 
+        variant="h5" 
+        gutterBottom 
+        sx={{
+          fontWeight: 600,
+          fontSize: { xs: '1.15rem', sm: '1.25rem' },
+          mb: 1
+        }}
+      >
         {content.title}
       </Typography>
       <Typography 
-        variant="body2" 
+        variant="body1" 
         color="text.secondary" 
         sx={{ 
-          maxWidth: 300,
-          mb: content.showAction ? 3 : 0
+          maxWidth: 350,
+          mb: content.showAction ? 3 : 0,
+          lineHeight: 1.6,
+          fontSize: '0.95rem'
         }}
       >
         {content.description}
@@ -98,9 +112,12 @@ const EmptyState: React.FC<EmptyStateProps> = ({ type, onAction, actionLabel }) 
           color="primary" 
           onClick={onAction}
           sx={{ 
-            mt: 2,
-            borderRadius: '20px',
-            px: 3
+            mt: 3,
+            borderRadius: '8px',
+            px: 3,
+            py: 1,
+            fontWeight: 500,
+            borderWidth: '1.5px'
           }}
         >
           {actionLabel}

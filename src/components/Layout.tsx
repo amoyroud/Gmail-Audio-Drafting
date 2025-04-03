@@ -34,28 +34,43 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
     navigate('/login');
   };
 
-  const handleProfileClick = () => {
+  const handleSettingsClick = () => {
     handleMenuClose();
-    // Navigation to profile or settings could be added here
+    navigate('/settings');
   };
 
   return (
     <Box sx={{ display: 'flex', flexDirection: 'column', minHeight: '100vh' }}>
       <AppBar position="static">
         <Toolbar>
-          <IconButton
-            size="large"
-            edge="start"
-            color="inherit"
-            aria-label="menu"
-            sx={{ mr: 2 }}
-            onClick={() => navigate('/')}
+          <Box 
+            component="div" 
+            onClick={() => navigate('/')} 
+            sx={{ 
+              display: 'flex', 
+              alignItems: 'center', 
+              cursor: 'pointer',
+              mr: 2 
+            }}
           >
-            <MenuIcon />
-          </IconButton>
-          <Typography variant="h6" component="div" sx={{ flexGrow: 1 }}>
-            Audio Email Assistant
-          </Typography>
+            <Box 
+              sx={{ 
+                width: 32, 
+                height: 32,
+                mr: 1.5,
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                color: 'white'
+              }}
+            >
+              <MicIcon sx={{ fontSize: 28 }} />
+            </Box>
+            <Typography variant="h6" component="div" sx={{ flexGrow: 1 }}>
+              Audio Email Assistant
+            </Typography>
+          </Box>
+          <Box sx={{ flexGrow: 1 }} />
           <IconButton
             size="large"
             aria-label="account of current user"
@@ -83,7 +98,7 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
             open={Boolean(anchorEl)}
             onClose={handleMenuClose}
           >
-            <MenuItem onClick={handleProfileClick}>Profile</MenuItem>
+            <MenuItem onClick={handleSettingsClick}>Settings</MenuItem>
             <MenuItem onClick={handleLogout}>Logout</MenuItem>
           </Menu>
         </Toolbar>
@@ -91,7 +106,9 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
       <Container maxWidth="lg" sx={{ 
         flexGrow: 1, 
         py: 3,
-        px: isMobile ? 1 : 3
+        px: isMobile ? 1 : 3,
+        position: 'relative',
+        overflowX: 'hidden'
       }}>
         {children}
       </Container>
@@ -111,7 +128,7 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
         </Typography>
       </Box>
 
-      {isMobile && (
+      {isMobile ? (
         <>
           <Fab
             color="primary"
@@ -119,9 +136,15 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
             onClick={() => setIsRecorderOpen(true)}
             sx={{
               position: 'fixed',
-              bottom: 16,
-              right: 16,
-              zIndex: 1000
+              bottom: { xs: 16, sm: 24 },
+              right: { xs: 16, sm: 24 },
+              zIndex: theme.zIndex.modal + 1,
+              transform: 'scale(1)',
+              '&:hover': {
+                transform: 'scale(1.1)'
+              },
+              transition: 'transform 0.2s ease-in-out',
+              boxShadow: '0 4px 12px rgba(33, 150, 243, 0.3)'
             }}
           >
             <MicIcon />
@@ -144,8 +167,9 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
               maxHeight: '90vh',
               overflow: 'auto',
               bgcolor: 'background.paper',
-              borderRadius: 1,
-              p: 2
+              borderRadius: '12px',
+              p: { xs: 2, sm: 3 },
+              boxShadow: theme.shadows[24]
             }}>
               {selectedEmail ? (
                 <AudioRecorder
@@ -168,7 +192,7 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
             </Box>
           </Modal>
         </>
-      )}
+      ) : null}
     </Box>
   );
 };

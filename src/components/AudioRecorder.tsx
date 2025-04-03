@@ -288,23 +288,24 @@ const AudioRecorder: React.FC<AudioRecorderProps> = ({ selectedEmail, onDraftSav
       
       {/* Recording UI */}
       <Paper 
-        elevation={0}
-        sx={{ 
-          p: 3, 
-          mb: 3, 
-          borderRadius: '12px',
-          border: '1px solid',
-          borderColor: 'divider',
-          backgroundColor: theme => theme.palette.mode === 'dark' ? 'rgba(255,255,255,0.03)' : 'rgba(0,0,0,0.01)',
-          display: 'flex',
-          flexDirection: 'column',
-          alignItems: 'center',
-          justifyContent: 'center',
-          position: 'relative'
-        }}
-      >
+          elevation={0}
+          sx={{ 
+            p: { xs: 2, sm: 3 }, 
+            borderRadius: '12px',
+            border: '1px solid',
+            borderColor: 'divider',
+            backgroundColor: theme => theme.palette.mode === 'dark' ? 'rgba(255,255,255,0.03)' : 'rgba(0,0,0,0.01)',
+            display: 'flex',
+            flexDirection: 'column',
+            alignItems: 'center',
+            justifyContent: 'center',
+            position: 'relative',
+            minHeight: '200px',
+            overflow: 'visible'
+          }}
+        >
         {!audioBlob && !isRecording && !processingAudio && (
-          <Box sx={{ textAlign: 'center', mb: 2 }}>
+          <Box sx={{ textAlign: 'center', mb: 2, width: '100%' }}>
             <Typography variant="h6" gutterBottom>
               Record Your Response
             </Typography>
@@ -328,13 +329,14 @@ const AudioRecorder: React.FC<AudioRecorderProps> = ({ selectedEmail, onDraftSav
               flexDirection: 'column',
               backgroundColor: theme => theme.palette.mode === 'dark' ? 'rgba(0,0,0,0.5)' : 'rgba(0,0,0,0.05)',
               borderRadius: '12px',
-              zIndex: 1
+              zIndex: 2,
+              padding: { xs: 2, sm: 3 }
             }}
           >
             <Box 
               sx={{ 
-                width: 80, 
-                height: 80, 
+                width: { xs: 70, sm: 80 }, 
+                height: { xs: 70, sm: 80 }, 
                 borderRadius: '50%',
                 backgroundColor: 'error.main',
                 display: 'flex',
@@ -355,9 +357,9 @@ const AudioRecorder: React.FC<AudioRecorderProps> = ({ selectedEmail, onDraftSav
                 }
               }}
             >
-              <MicIcon sx={{ fontSize: 40, color: 'white' }} />
+              <MicIcon sx={{ fontSize: { xs: 32, sm: 40 }, color: 'white' }} />
             </Box>
-            <Typography variant="h6" sx={{ mt: 2, color: 'error.main', fontWeight: 600 }}>
+            <Typography variant="h6" sx={{ mt: 2, color: 'error.main', fontWeight: 600, textAlign: 'center' }}>
               Recording...
             </Typography>
             <Button
@@ -365,14 +367,14 @@ const AudioRecorder: React.FC<AudioRecorderProps> = ({ selectedEmail, onDraftSav
               color="error"
               onClick={stopRecording}
               startIcon={<StopIcon />}
-              sx={{ mt: 2, borderRadius: '20px' }}
+              sx={{ mt: 2, borderRadius: '8px', whiteSpace: 'nowrap' }}
             >
               Stop Recording
             </Button>
           </Box>
         )}
         
-        <Box sx={{ display: 'flex', justifyContent: 'center', my: 2, position: 'relative', zIndex: 0 }}>
+        <Box sx={{ display: 'flex', justifyContent: 'center', my: 2, position: 'relative', zIndex: 1, width: '100%' }}>
           {!isRecording ? (
             <Button
               variant="contained"
@@ -381,10 +383,11 @@ const AudioRecorder: React.FC<AudioRecorderProps> = ({ selectedEmail, onDraftSav
               onClick={startRecording}
               disabled={isRecording || processingAudio || generatingDraft}
               sx={{ 
-                borderRadius: '24px', 
+                borderRadius: '8px', 
                 px: 3,
                 py: 1.5,
-                boxShadow: 2
+                boxShadow: 2,
+                minWidth: { xs: '180px', sm: '200px' }
               }}
             >
               Start Recording
@@ -409,42 +412,55 @@ const AudioRecorder: React.FC<AudioRecorderProps> = ({ selectedEmail, onDraftSav
             </Typography>
           </Box>
         )}
-      </Paper>
 
-      {/* Transcription Section */}
-      {transcription && (
-        <Paper 
-          elevation={0}
-          sx={{ 
-            p: 3, 
-            mb: 3, 
-            borderRadius: '12px',
-            border: '1px solid',
-            borderColor: 'divider'
-          }}
-        >
-          <Typography variant="subtitle1" gutterBottom sx={{ fontWeight: 600, color: 'text.primary' }}>
-            Your Transcription
-          </Typography>
-          <Typography 
-            variant="body2" 
-            sx={{ 
-              whiteSpace: 'pre-wrap',
-              lineHeight: 1.6,
-              color: 'text.secondary'
+        {transcription && (
+          <Paper
+            elevation={0}
+            sx={{
+              p: { xs: 2, sm: 3 },
+              mb: 3,
+              borderRadius: '12px',
+              border: '1px solid',
+              borderColor: 'divider'
             }}
           >
-            {transcription}
-          </Typography>
-        </Paper>
-      )}
+              <Box sx={{
+              display: 'flex',
+              justifyContent: 'space-between',
+              alignItems: 'center',
+              mb: 2
+            }}>
+              <Typography variant="subtitle1" sx={{ fontWeight: 600, color: 'text.primary' }}>
+                Your Transcription
+              </Typography>
+            </Box>
+            <Box sx={{
+              p: 2,
+              borderRadius: '8px',
+              backgroundColor: theme => theme.palette.mode === 'dark' ? 'rgba(255,255,255,0.03)' : 'rgba(0,0,0,0.01)',
+              border: '1px solid',
+              borderColor: 'divider'
+            }}>
+              <Typography 
+                variant="body2" 
+                sx={{ 
+                  whiteSpace: 'pre-wrap',
+                  lineHeight: 1.6
+                }}
+              >
+                {transcription}
+              </Typography>
+            </Box>
+          </Paper>
+        )}
+      </Paper>
 
-      {/* AI Draft Section */}
-      {transcription && (
+      {/* Draft Reply Section */}
+      {draftReply && (
         <Paper 
           elevation={0}
           sx={{ 
-            p: 3, 
+            p: { xs: 2, sm: 3 }, 
             mb: 3, 
             borderRadius: '12px',
             border: '1px solid',
@@ -521,6 +537,7 @@ const AudioRecorder: React.FC<AudioRecorderProps> = ({ selectedEmail, onDraftSav
                   borderRadius: '8px',
                   '& fieldset': { borderColor: 'divider' },
                   '&:hover fieldset': { borderColor: 'primary.main' },
+                  backgroundColor: theme.palette.mode === 'dark' ? 'rgba(255,255,255,0.03)' : 'rgba(0,0,0,0.01)'
                 }
               }}
             />
@@ -555,10 +572,11 @@ const AudioRecorder: React.FC<AudioRecorderProps> = ({ selectedEmail, onDraftSav
                 onClick={handleSaveDraft}
                 disabled={savingDraft || !draftReply}
                 sx={{ 
-                  borderRadius: '24px', 
+                  borderRadius: '8px', 
                   px: 3,
                   py: 1.5,
-                  boxShadow: 2
+                  boxShadow: 2,
+                  minWidth: { xs: '200px', sm: '240px' }
                 }}
               >
                 {savingDraft ? 'Saving...' : 'Save as Draft in Gmail'}

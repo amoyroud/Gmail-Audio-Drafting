@@ -22,24 +22,17 @@ export const generateDraftResponse = async (
 
     const { emailSubject, emailBody, transcribedText, senderName } = params;
 
-    // Create a prompt that includes all the context
-    const prompt = `You are an AI assistant helping to draft an email response for a venture capitalist.
-
-Context:
-- Email subject: "${emailSubject}"
-- Sender name: ${senderName}
-- Original email body: "${emailBody}"
-- My transcribed voice notes about how to respond: "${transcribedText}"
-
-Task: Write a professional and friendly email response that:
-1. Addresses the sender appropriately
-2. References the original email subject and content
-3. Incorporates the key points from my transcribed voice notes
-4. Maintains a friendly tone
-5. Sign with Antoine
-
-
-Write the complete email response:`;
+    // Get user settings for the prompt template
+    const { getSettings } = await import('./settingsService');
+    const { emailPromptTemplate, signature } = getSettings();
+    
+    // Replace variables in the template
+    const prompt = emailPromptTemplate
+      .replace('{emailSubject}', emailSubject)
+      .replace('{senderName}', senderName)
+      .replace('{emailBody}', emailBody)
+      .replace('{transcribedText}', transcribedText)
+      .replace('{signature}', signature);
 
     const chatResponse = await client.chat.complete({
       model: "mistral-large-latest",

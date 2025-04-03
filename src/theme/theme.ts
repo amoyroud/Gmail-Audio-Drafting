@@ -78,6 +78,23 @@ const getTheme = (mode: PaletteMode) => {
       borderRadius: 8,
     },
     components: {
+      // Global component styles
+      MuiPaper: {
+        defaultProps: {
+          elevation: 0,
+        },
+        styleOverrides: {
+          root: {
+            backgroundImage: 'none',
+            border: `1px solid ${mode === 'light' ? 'rgba(0, 0, 0, 0.08)' : 'rgba(255, 255, 255, 0.08)'}`,
+            borderRadius: 12,
+            transition: 'all 0.2s ease-in-out',
+            overflow: 'hidden',
+          },
+        },
+      },
+      
+      // Button styles
       MuiButton: {
         styleOverrides: {
           root: {
@@ -85,55 +102,99 @@ const getTheme = (mode: PaletteMode) => {
             padding: '8px 16px',
             fontWeight: 500,
             textTransform: 'none',
-            boxShadow: mode === 'light' ? '0 2px 4px rgba(0,0,0,0.05)' : 'none',
+            boxShadow: 'none',
+            '&:hover': {
+              boxShadow: mode === 'light' ? '0 4px 8px rgba(0,0,0,0.1)' : '0 4px 8px rgba(0,0,0,0.4)',
+            },
           },
           containedPrimary: {
             '&:hover': {
               boxShadow: '0 4px 12px rgba(33, 150, 243, 0.3)',
             },
           },
-        },
-      },
-      MuiPaper: {
-        styleOverrides: {
-          root: {
-            backgroundImage: 'none',
-          },
-          rounded: {
-            borderRadius: 12,
+          outlinedPrimary: {
+            borderWidth: '1.5px',
           },
         },
       },
+      
+      // Card styles
       MuiCard: {
         styleOverrides: {
           root: {
             borderRadius: 12,
-            boxShadow: mode === 'light' 
-              ? '0 2px 12px rgba(0, 0, 0, 0.05)' 
-              : '0 2px 12px rgba(0, 0, 0, 0.2)',
+            boxShadow: 'none',
+            border: `1px solid ${mode === 'light' ? 'rgba(0, 0, 0, 0.08)' : 'rgba(255, 255, 255, 0.08)'}`,
+            backgroundColor: mode === 'light' ? '#FFFFFF' : '#1E1E1E',
           },
         },
       },
+      
+      // Form elements
       MuiTextField: {
         styleOverrides: {
           root: {
             '& .MuiOutlinedInput-root': {
               borderRadius: 8,
+              transition: 'all 0.2s',
+              '&.Mui-focused': {
+                boxShadow: `0 0 0 2px ${mode === 'light' ? 'rgba(33, 150, 243, 0.2)' : 'rgba(144, 202, 249, 0.2)'}`,
+              },
             },
           },
         },
       },
+      
+      // List items
       MuiListItem: {
         styleOverrides: {
           root: {
             borderRadius: 8,
+            transition: 'background-color 0.2s ease',
           },
         },
       },
+      MuiListItemButton: {
+        styleOverrides: {
+          root: {
+            borderRadius: 8,
+            '&.Mui-selected': {
+              backgroundColor: mode === 'light' ? 'rgba(33, 150, 243, 0.08)' : 'rgba(144, 202, 249, 0.08)',
+              '&:hover': {
+                backgroundColor: mode === 'light' ? 'rgba(33, 150, 243, 0.12)' : 'rgba(144, 202, 249, 0.12)',
+              },
+            },
+          },
+        },
+      },
+      
+      // Feedback components
       MuiAlert: {
         styleOverrides: {
           root: {
             borderRadius: 8,
+            padding: '8px 16px',
+          },
+          standardSuccess: {
+            backgroundColor: mode === 'light' ? 'rgba(76, 175, 80, 0.1)' : 'rgba(76, 175, 80, 0.15)',
+            color: mode === 'light' ? '#2e7d32' : '#81c784',
+          },
+          standardError: {
+            backgroundColor: mode === 'light' ? 'rgba(244, 67, 54, 0.1)' : 'rgba(244, 67, 54, 0.15)',
+            color: mode === 'light' ? '#d32f2f' : '#e57373',
+          },
+          standardInfo: {
+            backgroundColor: mode === 'light' ? 'rgba(33, 150, 243, 0.1)' : 'rgba(33, 150, 243, 0.15)',
+            color: mode === 'light' ? '#0288d1' : '#64b5f6',
+          },
+        },
+      },
+      
+      // Dividers
+      MuiDivider: {
+        styleOverrides: {
+          root: {
+            borderColor: mode === 'light' ? 'rgba(0, 0, 0, 0.08)' : 'rgba(255, 255, 255, 0.08)',
           },
         },
       },

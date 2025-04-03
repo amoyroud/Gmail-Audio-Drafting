@@ -88,17 +88,36 @@ const EmailViewPage: React.FC = () => {
   }
 
   return (
-    <Box sx={{ p: 3, maxWidth: 800, mx: 'auto' }}>
-      <Paper sx={{ p: 3, mb: 3 }}>
-        <Box sx={{ mb: 3, display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
-          <Box sx={{ flex: 1 }}>
+    <Box sx={{ 
+      p: { xs: 2, sm: 3 }, 
+      maxWidth: 1200, 
+      mx: 'auto',
+      display: 'flex',
+      gap: { xs: 0, md: 3 },
+      flexDirection: { xs: 'column', md: 'row' },
+      height: 'calc(100vh - 120px)',
+      overflow: 'hidden'
+    }}>
+      <Paper sx={{ 
+        p: { xs: 2, sm: 3 }, 
+        mb: { xs: 3, md: 0 }, 
+        backgroundColor: theme.palette.background.paper,
+        flex: { xs: '1 1 auto', md: '0 0 65%' },
+        overflowY: 'auto',
+        height: '100%',
+        display: 'flex',
+        flexDirection: 'column'
+      }}>
+        <Box sx={{ mb: 3, display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: 2 }}>
+          <Box sx={{ flex: 1, minWidth: { xs: '100%', sm: 0 } }}>
             <Typography 
-              variant="h6" 
+              variant="h5" 
               gutterBottom 
               sx={{ 
-                fontSize: '1.25rem',
-                fontWeight: 500,
-                color: 'text.primary'
+                fontSize: { xs: '1.15rem', sm: '1.25rem' },
+                fontWeight: 600,
+                color: 'text.primary',
+                lineHeight: 1.3
               }}
             >
               {email.subject}
@@ -112,7 +131,7 @@ const EmailViewPage: React.FC = () => {
             }}>
               <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
                 <Typography 
-                  variant="subtitle2" 
+                  variant="subtitle1" 
                   sx={{ 
                     color: 'text.primary',
                     fontWeight: 500
@@ -129,7 +148,10 @@ const EmailViewPage: React.FC = () => {
               </Box>
               <Typography 
                 variant="body2" 
-                sx={{ color: 'text.secondary' }}
+                sx={{ 
+                  color: 'text.secondary',
+                  mt: { xs: 0.5, sm: 0 }
+                }}
               >
                 {new Date(email.date).toLocaleString(undefined, {
                   weekday: 'short',
@@ -142,7 +164,7 @@ const EmailViewPage: React.FC = () => {
               </Typography>
             </Box>
           </Box>
-          <Box>
+          <Box sx={{ display: 'flex', justifyContent: { xs: 'flex-end', sm: 'flex-end' }, width: { xs: '100%', sm: 'auto' } }}>
             <Tooltip title="Archive">
               <IconButton
                 onClick={async () => {
@@ -158,8 +180,12 @@ const EmailViewPage: React.FC = () => {
                     setError('Failed to archive email');
                   }
                 }}
-                color="inherit"
-                sx={{ ml: 1 }}
+                color="primary"
+                sx={{ 
+                  borderRadius: '8px',
+                  border: '1px solid',
+                  borderColor: 'divider'
+                }}
               >
                 <ArchiveIcon />
               </IconButton>
@@ -173,23 +199,48 @@ const EmailViewPage: React.FC = () => {
           sx={{ 
             whiteSpace: 'pre-wrap',
             wordBreak: 'break-word',
-            lineHeight: 1.5,
+            lineHeight: 1.6,
+            color: 'text.primary',
+            overflowWrap: 'break-word',
             '& a': { 
               color: 'primary.main',
               textDecoration: 'none',
               '&:hover': {
                 textDecoration: 'underline'
               }
+            },
+            '& p': {
+              marginBottom: 2
+            },
+            '& ul, & ol': {
+              marginLeft: 3,
+              marginBottom: 2
+            },
+            '& li': {
+              marginBottom: 1
+            },
+            '& hr': {
+              margin: '16px 0',
+              border: 'none',
+              borderTop: `1px solid ${theme.palette.divider}`
             }
           }}
           dangerouslySetInnerHTML={{
-            __html: email.body.split('\n').map(line => {
-              // Convert URLs to clickable links
-              return line.replace(
-                /(https?:\/\/[^\s<]+)/g,
-                '<a href="$1" target="_blank" rel="noopener noreferrer">$1</a>'
-              );
-            }).join('<br />')
+            __html: email.body
+              .split(/\r?\n/)
+              .map(line => {
+                // Convert URLs to clickable links
+                return line
+                  .replace(/^\s+/, match => '&nbsp;'.repeat(match.length)) // Preserve leading spaces
+                  .replace(/\t/g, '&nbsp;&nbsp;&nbsp;&nbsp;') // Convert tabs to spaces
+                  .replace(
+                    /(https?:\/\/[^\s<]+)/g,
+                    '<a href="$1" target="_blank" rel="noopener noreferrer">$1</a>'
+                  );
+              })
+              .join('<br />')
+              .replace(/(<br \/>){3,}/g, '<br /><br />') // Reduce multiple line breaks to max two
+              .replace(/•/g, '&bull;') // Convert bullet points to HTML entity
           }}
         />
       </Paper>
@@ -200,24 +251,26 @@ const EmailViewPage: React.FC = () => {
         </Alert>
       )}
 
-      {/* Record Response FAB */}
-      <Fab
-        color="primary"
-        aria-label="record response"
-        onClick={() => setIsRecorderOpen(true)}
-        sx={{
-          position: 'fixed',
-          bottom: 16,
-          right: 16,
-          zIndex: 1000
-        }}
-      >
-        <MicIcon />
-      </Fab>
+      {!isMobile && (
+        <Paper sx={{
+          p: { xs: 2, sm: 3 },
+          backgroundColor: theme.palette.background.paper,
+          flex: { md: '0 0 35%' },
+          height: '100%',
+          overflowY: 'auto',
+          display: 'flex',
+          flexDirection: 'column'
+        }}>
+          <AudioRecorder
+            selectedEmail={email}
+            onDraftSaved={handleDraftSaved}
+          />
+        </Paper>
+      )}
 
       {editMode ? (
-        <Card sx={{ mt: 3 }}>
-          <CardContent>
+        <Paper sx={{ mt: 3, overflow: 'hidden' }}>
+          <Box sx={{ p: { xs: 2, sm: 3 } }}>
             <TextField
               fullWidth
               multiline
@@ -225,6 +278,12 @@ const EmailViewPage: React.FC = () => {
               value={draftReply}
               onChange={(e) => setDraftReply(e.target.value)}
               placeholder="Type your reply..."
+              variant="outlined"
+              sx={{
+                '& .MuiOutlinedInput-root': {
+                  backgroundColor: theme.palette.mode === 'dark' ? 'rgba(255,255,255,0.03)' : 'rgba(0,0,0,0.01)'
+                }
+              }}
             />
             <Box sx={{ mt: 2, display: 'flex', justifyContent: 'flex-end', gap: 1 }}>
               <Button
@@ -237,13 +296,14 @@ const EmailViewPage: React.FC = () => {
                     subject: `Re: ${email.subject}`,
                     body: draftReply
                   });
+                  handleDraftSaved();
                 }}
               >
                 Save Draft
               </Button>
             </Box>
-          </CardContent>
-        </Card>
+          </Box>
+        </Paper>
       ) : null}
     </Box>
   );
