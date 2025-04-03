@@ -1,35 +1,35 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
-import {
+import { 
+  Alert,
   Box,
-  Paper,
-  Typography,
+  Button,
+  CircularProgress,
+  Divider,
+  IconButton,
+  InputAdornment,
   List,
   ListItem,
-  ListItemText,
   ListItemButton,
-  ListItemSecondaryAction,
-  Divider,
-  CircularProgress,
-  Alert,
+  ListItemText,
+  Paper,
+  TextField,
+  Tooltip,
+  Typography,
   useMediaQuery,
   useTheme,
-  TextField,
-  IconButton,
-  Tooltip,
+  Collapse
 } from '@mui/material';
 import SearchIcon from '@mui/icons-material/Search';
 import ArchiveIcon from '@mui/icons-material/Archive';
 
 // Services
-import { fetchEmails, archiveEmail } from '../services/gmailService';
+import { archiveEmail, fetchEmails, getEmailById, getTotalEmailCount, type EmailsResponse } from '../services/gmailService';
 import { Email } from '../types/types';
 import AudioRecorder from '../components/AudioRecorder';
 import GmailAuth from '../components/GmailAuth';
 import EmptyState from '../components/EmptyState';
 import { useEmail } from '../context/EmailContext';
-
-
 
 const HomePage: React.FC = () => {
   const navigate = useNavigate();
@@ -37,33 +37,43 @@ const HomePage: React.FC = () => {
   const isMobile = useMediaQuery(theme.breakpoints.down('sm'));
   
   const [emails, setEmails] = useState<Email[]>([]);
+  // Removed totalEmailCount state as it's not currently used
+  const [nextPageToken, setNextPageToken] = useState<string>();
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [archiving, setArchiving] = useState<string | null>(null); // Track which email is being archived
-  const { selectedEmail, setSelectedEmail, setIsRecorderOpen } = useEmail();
-  const [searchQuery, setSearchQuery] = useState('');
+  const [archiving, setArchiving] = useState<string | null>(null);
+  const [selectedEmail, setSelectedEmail] = useState<Email | null>(null);
+  const [selectedEmailIndex, setSelectedEmailIndex] = useState<number>(0);
   const [isAuthenticated, setIsAuthenticated] = useState(false);
+  const [searchQuery, setSearchQuery] = useState('');
+  const { setIsRecorderOpen } = useEmail();
+
+  // Removed fetchTotalCount as it's not currently used
+
+  const fetchEmailsList = useCallback(async (pageToken?: string) => {
+    if (!isAuthenticated) return;
+    setLoading(true);
+    try {
+      const response: EmailsResponse = await fetchEmails(pageToken);
+      if (pageToken) {
+        setEmails(prev => [...prev, ...response.emails]);
+      } else {
+        setEmails(response.emails as Email[]);
+      }
+      // Don't update total count here as we get it separately
+      // setTotalEmailCount(response.totalCount);
+      setNextPageToken(response.nextPageToken);
+    } catch (err) {
+      console.error('Error fetching emails:', err);
+      setError('Failed to load emails. Please try again.');
+    } finally {
+      setLoading(false);
+    }
+  }, [isAuthenticated]);
 
   useEffect(() => {
-    const fetchEmailsList = async () => {
-      if (!isAuthenticated) return;
-      
-      setLoading(true);
-      setError(null);
-      
-      try {
-        const emailList = await fetchEmails();
-        setEmails(emailList);
-      } catch (err) {
-        console.error('Error fetching emails:', err);
-        setError('Failed to load emails. Please try again.');
-      } finally {
-        setLoading(false);
-      }
-    };
-    
     fetchEmailsList();
-  }, [isAuthenticated]);
+  }, [isAuthenticated, fetchEmailsList]);
 
   const handleAuthStateChange = (authenticated: boolean) => {
     setIsAuthenticated(authenticated);
@@ -91,6 +101,84 @@ const HomePage: React.FC = () => {
         email.snippet.toLowerCase().includes(searchQuery.toLowerCase());
     })
     .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+
+  // Handle email selection and expansion
+  const handleEmailClick = async (email: Email) => {
+    if (selectedEmail?.id === email.id) {
+      setSelectedEmail(null);
+    } else {
+      const fullEmail = await getEmailById(email.id);
+      setEmails(prev => prev.map(e => e.id === fullEmail.id ? fullEmail : e));
+      setSelectedEmail(fullEmail);
+    }
+  };
+
+  // Handle email archiving
+  const handleArchive = async (emailId: string) => {
+    try {
+      setArchiving(emailId);
+      await archiveEmail(emailId);
+      // Remove the email from the list
+      setEmails(emails => emails.filter(e => e.id !== emailId));
+      // Clear selection if archived email was selected
+      if (selectedEmail?.id === emailId) {
+        setSelectedEmail(null);
+      }
+    } catch (error) {
+      console.error('Failed to archive email:', error);
+      setError('Failed to archive email');
+    } finally {
+      setArchiving(null);
+    }
+  };
+
+  // Handle keyboard navigation
+  useEffect(() => {
+    const handleKeyDown = async (event: KeyboardEvent) => {
+      if (!filteredEmails || filteredEmails.length === 0) return;
+
+      switch (event.key) {
+        case 'ArrowUp':
+          const newUpIndex = Math.max(0, selectedEmailIndex - 1);
+          setSelectedEmailIndex(newUpIndex);
+          const upEmail = filteredEmails[newUpIndex];
+          if (upEmail) {
+            const fullEmail = await getEmailById(upEmail.id);
+            setEmails(prev => prev.map(e => e.id === fullEmail.id ? fullEmail : e));
+          }
+          break;
+        case 'ArrowDown':
+          const newDownIndex = Math.min(filteredEmails.length - 1, selectedEmailIndex + 1);
+          setSelectedEmailIndex(newDownIndex);
+          const downEmail = filteredEmails[newDownIndex];
+          if (downEmail) {
+            const fullEmail = await getEmailById(downEmail.id);
+            setEmails(prev => prev.map(e => e.id === fullEmail.id ? fullEmail : e));
+          }
+          break;
+        case 'Enter':
+          const email = filteredEmails[selectedEmailIndex];
+          if (email) {
+            handleEmailClick(email);
+          }
+          break;
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [filteredEmails, selectedEmailIndex]);
+
+  // Update selected email when index changes
+  useEffect(() => {
+    if (filteredEmails && filteredEmails.length > selectedEmailIndex) {
+      setSelectedEmail(selectedEmail => {
+        const newEmail = filteredEmails[selectedEmailIndex];
+        // Only update if it's a different email
+        return newEmail && newEmail.id !== selectedEmail?.id ? newEmail : selectedEmail;
+      });
+    }
+  }, [selectedEmailIndex, filteredEmails]);
 
   if (!isAuthenticated) {
     return (
@@ -145,263 +233,263 @@ const HomePage: React.FC = () => {
   }
 
   return (
-    <Box sx={{ p: { xs: 2, sm: 3 }, maxWidth: 1200, mx: 'auto', overflowX: 'hidden' }}>
-
+    <Box sx={{ p: { xs: 2, sm: 3 }, maxWidth: 1200, mx: 'auto' }}>
       {error && (
-        <Alert 
-          severity="error" 
-          sx={{ 
-            mb: 3,
-            borderRadius: '8px',
-            boxShadow: '0 2px 8px rgba(0,0,0,0.05)'
-          }}
-        >
+        <Alert severity="error" sx={{ mb: 3 }}>
           {error}
         </Alert>
       )}
 
-      {/* Search Bar */}
-      <Paper 
-        elevation={0}
-        sx={{ 
-          p: { xs: 2, sm: 3 }, 
-          mb: 3, 
-          borderRadius: '12px',
-          border: '1px solid',
-          borderColor: 'divider',
-          backgroundColor: theme.palette.mode === 'dark' ? 'rgba(255,255,255,0.03)' : 'rgba(0,0,0,0.01)',
-          width: '100%'
-        }}
-      >
+      {/* Search Bar and Inbox Count */}
+      <Box sx={{ display: 'flex', gap: 2, alignItems: 'center', mb: 3 }}>
         <TextField
-          placeholder="Search emails"
-          variant="outlined"
-          fullWidth
           size="small"
+          placeholder="Search emails..."
           value={searchQuery}
-          onChange={(e) => setSearchQuery(e.target.value)}
+          onChange={(e: React.ChangeEvent<HTMLInputElement>) => setSearchQuery(e.target.value)}
+          sx={{ flex: 1 }}
           InputProps={{
             startAdornment: (
-              <SearchIcon color="action" sx={{ mr: 1 }} />
-            ),
-            sx: { 
-              borderRadius: '8px',
-              '& fieldset': { borderColor: 'divider' },
-              '&:hover fieldset': { borderColor: 'primary.main' },
-            }
+              <InputAdornment position="start">
+                <SearchIcon color="action" />
+              </InputAdornment>
+            )
           }}
         />
-      </Paper>
+        <Paper
+          elevation={0}
+          sx={{
+            p: { xs: 2, sm: 3 },
+            borderRadius: '12px',
+            border: '1px solid',
+            borderColor: 'divider',
+            backgroundColor: theme.palette.mode === 'dark' ? 'rgba(255,255,255,0.03)' : 'rgba(0,0,0,0.01)',
+            display: 'flex',
+            alignItems: 'center',
+            gap: 1
+          }}
+        >
+          <Typography variant="body2" color="text.secondary">
+            Inbox
+          </Typography>
+          <Typography variant="body1" fontWeight={500}>
+            {emails.length}
+          </Typography>
+        </Paper>
+      </Box>
 
-    <Box sx={{ 
-      display: 'flex', 
-      gap: 3, 
-      flexDirection: isMobile ? 'column' : 'row',
-      width: '100%'
-    }}>
-      {/* Email List */}
-      <Paper 
-        elevation={0}
-        sx={{ 
-          flex: 1, 
-          maxHeight: 'calc(100vh - 250px)', 
-          overflow: 'auto',
-          minWidth: isMobile ? '100%' : '50%',
-          borderRadius: '12px',
-          border: '1px solid',
-          borderColor: 'divider'
-        }}
-      >
-        <List sx={{ p: 0 }}>
-          {loading ? (
-            <Box sx={{ display: 'flex', justifyContent: 'center', p: 4 }}>
-              <CircularProgress />
-            </Box>
-          ) : filteredEmails.length === 0 ? (
-            <EmptyState 
-              type={searchQuery ? 'noResults' : 'noEmails'}
-              onAction={() => {
-                setSearchQuery('');
-                // Refresh emails
-                setLoading(true);
-                fetchEmails().then(emailList => {
-                  setEmails(emailList);
-                  setLoading(false);
-                }).catch(err => {
-                  console.error('Error fetching emails:', err);
-                  setError('Failed to load emails. Please try again.');
-                  setLoading(false);
-                });
-              }}
-              actionLabel={searchQuery ? 'Clear Search' : 'Refresh'}
-            />
-          ) : (
-            filteredEmails.map((email, index) => (
-              <React.Fragment key={email.id}>
-                {index > 0 && <Divider />}
-                <ListItemButton 
-                  selected={selectedEmail?.id === email.id}
-                  onClick={() => navigate(`/email/${email.id}`)}
-                  disabled={archiving === email.id}
-                  sx={{
-                    py: 1.5,
-                    pl: 2,
-                    pr: 7,
-                    position: 'relative',
-                    '&:hover': {
-                      backgroundColor: theme.palette.mode === 'dark' 
-                        ? 'rgba(255, 255, 255, 0.08)' 
-                        : 'rgba(0, 0, 0, 0.04)'
-                    },
-                    ...(email.unread && {
-                      borderLeft: `4px solid ${theme.palette.primary.main}`,
-                      backgroundColor: theme.palette.mode === 'dark' 
-                        ? 'rgba(255, 255, 255, 0.05)' 
-                        : 'rgba(25, 118, 210, 0.04)'
-                    }),
-                    ...(!email.unread && {
-                      borderLeft: '4px solid transparent'
-                    })
-                  }}
-                >
-                  <ListItemText
-                    disableTypography
-                    primary={
-                      <Box sx={{ mb: 0.5 }}>
-                        <Typography
-                          variant="subtitle1"
-                          sx={{
-                            fontWeight: email.unread ? 600 : 500,
-                            color: email.unread ? 'text.primary' : 'text.secondary',
-                            mb: 0.5,
-                            display: 'flex',
-                            alignItems: 'center',
-                            gap: 1
-                          }}
-                        >
-                          {email.unread && (
-                            <Box 
-                              component="span" 
-                              sx={{ 
-                                width: 8, 
-                                height: 8, 
-                                borderRadius: '50%', 
-                                bgcolor: 'primary.main',
-                                display: 'inline-block'
-                              }}
-                            />
-                          )}
-                          {email.subject}
-                        </Typography>
-                        <Box
-                          sx={{
-                            display: 'flex',
-                            justifyContent: 'space-between',
-                            alignItems: 'center'
-                          }}
-                        >
-                          <Typography 
-                            variant="body2" 
-                            sx={{ 
-                              color: email.unread ? 'text.primary' : 'text.secondary',
-                              fontWeight: email.unread ? 500 : 400
+      <Box sx={{ 
+        display: 'flex', 
+        gap: 3, 
+        flexDirection: isMobile ? 'column' : 'row',
+        width: '100%'
+      }}>
+        {/* Email List */}
+        <Paper 
+          elevation={0}
+          sx={{ 
+            flex: 1, 
+            maxHeight: 'calc(100vh - 250px)', 
+            overflow: 'auto',
+            minWidth: isMobile ? '100%' : '50%',
+            borderRadius: '12px',
+            border: '1px solid',
+            borderColor: 'divider'
+          }}
+          tabIndex={0}
+        >
+          <List sx={{ p: 0 }}>
+            {loading ? (
+              <Box sx={{ p: 2 }}>
+                <CircularProgress />
+              </Box>
+            ) : error ? (
+              <Box sx={{ p: 2 }}>
+                <Typography color="error">{error}</Typography>
+              </Box>
+            ) : filteredEmails.length === 0 ? (
+              <Box sx={{ p: 2 }}>
+                <Typography>No emails found</Typography>
+              </Box>
+            ) : (
+              filteredEmails.map((email, index) => (
+                <React.Fragment key={email.id}>
+                  {index > 0 && <Divider />}
+                  <ListItem
+                    disablePadding
+                    sx={{
+                      display: 'flex',
+                      flexDirection: 'column',
+                      alignItems: 'stretch',
+                      borderBottom: '1px solid',
+                      borderColor: 'divider'
+                    }}
+                  >
+                    <ListItemButton 
+                      onClick={() => {
+                        setSelectedEmailIndex(index);
+                        handleEmailClick(email);
+                      }}
+                      selected={index === selectedEmailIndex}
+                      sx={{
+                        p: 2,
+                        position: 'relative',
+                        transition: 'all 0.2s ease',
+                        minHeight: '100px',
+                        '&:hover': {
+                          '& .actions': {
+                            opacity: 1
+                          }
+                        },
+                        '&.Mui-selected': {
+                          bgcolor: 'action.selected',
+                          p: 3,
+                          minHeight: '300px',
+                          '&:hover': {
+                            bgcolor: 'action.selected'
+                          }
+                        }
+                      }}
+                    >
+                      <Box sx={{ width: '100%' }}>
+                        {/* Header */}
+                        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 1 }}>
+                          <Typography
+                            variant="body1"
+                            sx={{
+                              fontWeight: email.unread ? 600 : 400,
+                              color: email.unread ? 'text.primary' : 'text.secondary'
                             }}
                           >
-                            {email.from.name || email.from.email}
+                            {typeof email.from === 'string' ? email.from : email.from.email}
                           </Typography>
-                          <Typography 
-                            variant="caption" 
-                            sx={{ 
-                              color: 'text.secondary',
-                              fontWeight: email.unread ? 500 : 400
-                            }}
+                          <Typography
+                            variant="body2"
+                            color="text.secondary"
+                            sx={{ ml: 'auto' }}
                           >
                             {formatDate(email.date)}
                           </Typography>
                         </Box>
+
+                        {/* Subject */}
+                        <Typography
+                          variant="body1"
+                          sx={{
+                            fontWeight: 600,
+                            mb: 2,
+                            color: 'text.primary'
+                          }}
+                        >
+                          {email.subject}
+                        </Typography>
+
+                        {/* Content */}
+                        {index === selectedEmailIndex ? (
+                          <Typography
+                            variant="body1"
+                            sx={{
+                              color: 'text.primary',
+                              whiteSpace: 'pre-wrap',
+                              lineHeight: 1.7,
+                              mt: 2
+                            }}
+                          >
+                            {email.body}
+                          </Typography>
+                        ) : (
+                          <Typography
+                            variant="body2"
+                            sx={{
+                              color: 'text.secondary',
+                              display: '-webkit-box',
+                              WebkitLineClamp: 2,
+                              WebkitBoxOrient: 'vertical',
+                              overflow: 'hidden',
+                              textOverflow: 'ellipsis'
+                            }}
+                          >
+                            {email.snippet}
+                          </Typography>
+                        )}
                       </Box>
-                    }
-                    secondary={
-                      <Typography 
-                        variant="body2" 
-                        color="text.secondary"
-                        sx={{ 
-                          display: '-webkit-box',
-                          WebkitLineClamp: 2,
-                          WebkitBoxOrient: 'vertical',
-                          overflow: 'hidden',
-                          textOverflow: 'ellipsis',
-                          opacity: email.unread ? 0.9 : 0.7
+
+                      {/* Actions */}
+                      <Box
+                        className="actions"
+                        sx={{
+                          position: 'absolute',
+                          right: 16,
+                          top: 16,
+                          display: 'flex',
+                          gap: 1,
+                          opacity: { xs: 1, sm: 0 },
+                          transition: 'opacity 0.2s'
                         }}
                       >
-                        {email.snippet}
-                      </Typography>
-                    }
-                  />
-                  <ListItemSecondaryAction>
-                    <Tooltip title="Archive">
-                      <IconButton
-                        edge="end"
-                        aria-label="archive"
-                        onClick={async (e) => {
-                          e.stopPropagation(); // Prevent navigation
-                          try {
-                            setArchiving(email.id);
-                            await archiveEmail(email.id);
-                            // Remove the email from the list
-                            setEmails(emails.filter(e => e.id !== email.id));
-                          } catch (error) {
-                            setError('Failed to archive email');
-                          } finally {
-                            setArchiving(null);
-                          }
-                        }}
-                        disabled={archiving === email.id}
-                        sx={{ 
-                          color: 'text.secondary',
-                          '&:hover': { color: 'primary.main' }
-                        }}
-                      >
-                        {archiving === email.id ? <CircularProgress size={20} /> : <ArchiveIcon />}
-                      </IconButton>
-                    </Tooltip>
-                  </ListItemSecondaryAction>
-                </ListItemButton>
-              </React.Fragment>
-            ))
+                        <IconButton
+                          size="small"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleArchive(email.id);
+                          }}
+                          disabled={archiving === email.id}
+                        >
+                          {archiving === email.id ? (
+                            <CircularProgress size={20} />
+                          ) : (
+                            <ArchiveIcon />
+                          )}
+                        </IconButton>
+                      </Box>
+                    </ListItemButton>
+
+                  </ListItem>
+                </React.Fragment>
+              ))
+            )}
+          </List>
+          {nextPageToken && !loading && (
+            <Box sx={{ display: 'flex', justifyContent: 'center', p: 2 }}>
+              <Button
+                variant="outlined"
+                onClick={() => fetchEmailsList(nextPageToken)}
+                sx={{ textTransform: 'none' }}
+              >
+                Load More
+              </Button>
+            </Box>
           )}
-        </List>
-      </Paper>
+        </Paper>
 
-      {/* Audio Recorder */}
-      <Paper 
-        elevation={0}
-        sx={{ 
-          p: { xs: 2, sm: 3 }, 
-          borderRadius: '12px',
-          border: '1px solid',
-          borderColor: 'divider',
-          backgroundColor: theme.palette.mode === 'dark' ? 'rgba(255,255,255,0.03)' : 'rgba(0,0,0,0.01)',
-          flexGrow: 1,
-          minWidth: 0,
-          flexBasis: { xs: '100%', md: 0 },
-          display: 'flex',
-          flexDirection: 'column'
-        }}
-      >
-        <Typography variant="h6" sx={{ mb: 2, fontWeight: 600 }}>
-          Audio Response
-        </Typography>
-        {selectedEmail ? (
-          <AudioRecorder selectedEmail={selectedEmail} />
-        ) : (
-          <EmptyState type="noSelection" />
-        )}
-      </Paper>
-
+        {/* Audio Recorder */}
+        <Paper 
+          elevation={0}
+          sx={{ 
+            p: { xs: 2, sm: 3 }, 
+            borderRadius: '12px',
+            border: '1px solid',
+            borderColor: 'divider',
+            backgroundColor: theme.palette.mode === 'dark' ? 'rgba(255,255,255,0.03)' : 'rgba(0,0,0,0.01)',
+            flexGrow: 1,
+            minWidth: 0,
+            flexBasis: { xs: '100%', md: 0 },
+            display: 'flex',
+            flexDirection: 'column'
+          }}
+        >
+          <Typography variant="h6" sx={{ mb: 2, fontWeight: 600 }}>
+            Audio Response
+          </Typography>
+          {selectedEmail ? (
+            <AudioRecorder selectedEmail={selectedEmail} />
+          ) : (
+            <EmptyState type="noSelection" />
+          )}
+        </Paper>
       </Box>
     </Box>
   );
 };
 
-export default HomePage; 
+export default HomePage;

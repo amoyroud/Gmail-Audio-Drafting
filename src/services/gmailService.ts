@@ -78,16 +78,13 @@ export const initGmailClient = async (): Promise<void> => {
   initPromise = new Promise<void>(async (resolve, reject) => {
     try {
       if (!CLIENT_ID || !API_KEY) {
-        throw new Error('Google client ID or API key not configured');
+        throw new Error('Missing required environment variables');
       }
 
-      // Load GIS script
-      console.log('Loading GIS script...');
+      // Load Google Identity Services
       await loadGisScript();
-      console.log('GIS script loaded successfully');
 
-      // Initialize token client
-      console.log('Initializing token client...');
+      // Initialize the tokenClient
       const tokenClient = window.google.accounts.oauth2.initTokenClient({
         client_id: CLIENT_ID,
         scope: GMAIL_SCOPES.join(' '),
@@ -116,8 +113,18 @@ export const initGmailClient = async (): Promise<void> => {
                       access_token: tokenResponse.access_token
                     });
                     
+                    // Store token and user info
                     localStorage.setItem('gmail_auth_code', tokenResponse.access_token);
                     window.googleAuthInitialized = true;
+                    
+                    // Get and store user email
+                    try {
+                      const profile = await window.gapi.client.gmail.users.getProfile({ userId: 'me' });
+                      localStorage.setItem('gmail_user_email', profile.result.emailAddress);
+                    } catch (e) {
+                      console.error('Error getting user profile:', e);
+                    }
+                    
                     window.dispatchEvent(new Event('gmail_authenticated'));
                     resolveGapi();
                   } catch (error) {
@@ -140,8 +147,24 @@ export const initGmailClient = async (): Promise<void> => {
 
       // Store token client for later use
       window.tokenClient = tokenClient;
+      window.googleTokenClient = tokenClient;
       
-      // Request initial token
+      // Check if we have a stored token
+      const storedToken = localStorage.getItem('gmail_auth_code');
+      if (storedToken) {
+        try {
+          window.gapi.client.setToken({ access_token: storedToken });
+          window.googleAuthInitialized = true;
+          window.dispatchEvent(new Event('gmail_authenticated'));
+          resolve();
+          return;
+        } catch (error) {
+          console.error('Error using stored token:', error);
+          localStorage.removeItem('gmail_auth_code');
+        }
+      }
+      
+      // If no stored token, request a new one
       tokenClient.requestAccessToken({ prompt: 'consent' });
 
     } catch (error) {
@@ -158,6 +181,8 @@ export const initGmailClient = async (): Promise<void> => {
 /**
  * Sign in to Gmail
  */
+
+
 export const signIn = async (): Promise<void> => {
   try {
     // Initialize client if not already done
@@ -171,8 +196,22 @@ export const signIn = async (): Promise<void> => {
       throw new Error('Token client not initialized');
     }
 
-    // Request token with prompt
+    // Request token with redirect flow
     return new Promise<void>((resolve, reject) => {
+      // Check if we have a stored token
+      const storedToken = localStorage.getItem('gmail_auth_code');
+      if (storedToken) {
+        try {
+          window.gapi.client.setToken({ access_token: storedToken });
+          window.dispatchEvent(new Event('gmail_authenticated'));
+          resolve();
+          return;
+        } catch (error) {
+          console.error('Error using stored token:', error);
+          localStorage.removeItem('gmail_auth_code');
+        }
+      }
+
       tokenClient.callback = async (response: any) => {
         if (response.error !== undefined) {
           reject(response);
@@ -191,10 +230,8 @@ export const signIn = async (): Promise<void> => {
         }
       };
 
-      // Prompt the user to select an account
-      tokenClient.requestAccessToken({
-        prompt: 'select_account'
-      });
+      // Request new token
+      tokenClient.requestAccessToken({ prompt: 'consent' });
     });
   } catch (error) {
     console.error('Error signing in:', error);
@@ -297,19 +334,46 @@ const ensureAuthenticated = async (): Promise<void> => {
   }
 };
 
-export const fetchEmails = async (): Promise<Email[]> => {
+export interface EmailsResponse {
+  emails: Email[];
+  totalCount: number;
+  nextPageToken?: string;
+}
+
+export const getTotalEmailCount = async (): Promise<number> => {
+  try {
+    await ensureAuthenticated();
+    // Get the total count from Gmail API for primary inbox
+    const response = await window.gapi.client.gmail.users.messages.list({
+      userId: 'me',
+      labelIds: ['INBOX', 'CATEGORY_PRIMARY'],
+      maxResults: 1
+    });
+    return response.result.resultSizeEstimate || 0;
+  } catch (error) {
+    console.error('Error fetching email count:', error);
+    throw error;
+  }
+};
+
+export const fetchEmails = async (pageToken?: string): Promise<EmailsResponse> => {
   try {
     await ensureAuthenticated();
 
     // Get messages from Gmail API without search query
     const response = await window.gapi.client.gmail.users.messages.list({
       userId: 'me',
-      maxResults: 10,
-      labelIds: ['INBOX']
+      maxResults: 20,
+      labelIds: ['INBOX'],
+      pageToken
     });
 
     if (!response.result.messages) {
-      return [];
+      return {
+        emails: [],
+        totalCount: 0,
+        nextPageToken: undefined
+      };
     }
 
     // Fetch detailed information for each message
@@ -347,7 +411,11 @@ export const fetchEmails = async (): Promise<Email[]> => {
       })
     );
 
-    return emails;
+    return {
+      emails,
+      totalCount: response.result.resultSizeEstimate || 0,
+      nextPageToken: response.result.nextPageToken
+    };
   } catch (error) {
     console.error('Error fetching emails:', error);
     throw error;
@@ -377,21 +445,32 @@ export const getEmailById = async (emailId: string): Promise<Email> => {
     const extractTextFromPart = (part: any): string => {
       if (!part) return '';
 
+      // If we have direct content, decode it
       if (part.body?.data) {
         return atob(part.body.data.replace(/-/g, '+').replace(/_/g, '/'));
       }
 
+      // Handle multipart messages
       if (part.parts) {
-        let content = '';
-        // For multipart messages, concatenate all text parts
+        // First try to find a plain text version
+        const plainTextPart = part.parts.find((p: any) => p.mimeType === 'text/plain');
+        if (plainTextPart) {
+          return extractTextFromPart(plainTextPart);
+        }
+
+        // If no plain text, try to find HTML version
+        const htmlPart = part.parts.find((p: any) => p.mimeType === 'text/html');
+        if (htmlPart) {
+          return extractTextFromPart(htmlPart);
+        }
+
+        // If neither found, try nested parts
         for (const p of part.parts) {
-          if (p.mimeType === 'text/plain' || p.mimeType === 'text/html') {
-            content += extractTextFromPart(p) + '\n';
-          } else if (p.parts) {
-            content += extractTextFromPart(p) + '\n';
+          if (p.parts) {
+            const nestedContent = extractTextFromPart(p);
+            if (nestedContent) return nestedContent;
           }
         }
-        return content;
       }
 
       return '';
@@ -406,29 +485,46 @@ export const getEmailById = async (emailId: string): Promise<Email> => {
   });
 
   // Handle HTML content
-  if (cleaned.includes('<!DOCTYPE html>') || cleaned.includes('<html>')) {
+  if (cleaned.includes('<!DOCTYPE html>') || cleaned.includes('<html>') || cleaned.includes('<div')) {
     // Extract text from HTML while preserving some formatting
     cleaned = cleaned
-      .replace(/<br\s*\/?>/gi, '\n') // Convert <br> to newlines
-      .replace(/<p[^>]*>/gi, '\n') // Convert <p> to newlines
-      .replace(/<div[^>]*>/gi, '\n') // Convert <div> to newlines
-      .replace(/<li[^>]*>/gi, '\n• ') // Convert list items to bullet points
-      .replace(/<\/li>/gi, '') 
-      .replace(/<hr[^>]*>/gi, '\n---\n') // Convert horizontal rules to markdown
-      .replace(/<[^>]+>/g, ''); // Remove remaining HTML tags
+      // Convert common block elements to newlines
+      .replace(/<(?:div|p|h[1-6]|article|section|header|footer)[^>]*>/gi, '\n')
+      .replace(/<\/(?:div|p|h[1-6]|article|section|header|footer)>/gi, '\n')
+      .replace(/<br\s*\/?>/gi, '\n')
+      
+      // Handle lists
+      .replace(/<li[^>]*>/gi, '\n• ')
+      .replace(/<\/li>/gi, '')
+      .replace(/<\/?(?:ul|ol)>/gi, '\n')
+      
+      // Special formatting
+      .replace(/<hr[^>]*>/gi, '\n---\n')
+      .replace(/<blockquote[^>]*>/gi, '\n> ')
+      .replace(/<\/blockquote>/gi, '\n')
+      
+      // Preserve some inline formatting
+      .replace(/<(?:b|strong)[^>]*>(.*?)<\/(?:b|strong)>/gi, '*$1*')
+      .replace(/<(?:i|em)[^>]*>(.*?)<\/(?:i|em)>/gi, '_$1_')
+      
+      // Remove remaining HTML tags
+      .replace(/<[^>]+>/g, '');
   } else {
     // For plain text, just remove any stray HTML tags
     cleaned = cleaned.replace(/<[^>]*>/g, '');
   }
   
-  // Replace HTML entities
+  // Replace HTML entities (common first, then generic)
   cleaned = cleaned
     .replace(/&nbsp;/g, ' ')
     .replace(/&amp;/g, '&')
     .replace(/&lt;/g, '<')
     .replace(/&gt;/g, '>')
     .replace(/&quot;/g, '"')
-    .replace(/&apos;/g, "'");
+    .replace(/&apos;/g, "'")
+    .replace(/&#x([0-9A-Fa-f]+);/g, (_, hex) => String.fromCharCode(parseInt(hex, 16)))
+    .replace(/&#([0-9]+);/g, (_, dec) => String.fromCharCode(parseInt(dec, 10)))
+    .replace(/&[#A-Za-z0-9]+;/g, ' '); // Replace any remaining entities with space
   
   // Remove email metadata while preserving content
   cleaned = cleaned
@@ -495,6 +591,94 @@ export const getEmailById = async (emailId: string): Promise<Email> => {
  * @param draft The draft email to create
  * @returns The ID of the created draft
  */
+// Format email address with proper RFC 5322 format
+const formatEmailAddress = (email: string, name?: string) => {
+  return name ? `${name} <${email}>` : `<${email}>`;
+};
+
+// Send an email directly
+export const sendEmail = async (draft: DraftEmail): Promise<string> => {
+  try {
+    // Validate draft fields
+    if (!draft.to || !draft.subject || !draft.body) {
+      throw new Error('Missing required fields in draft email');
+    }
+
+    await ensureAuthenticated();
+
+    const { raw: encodedEmail } = await createEmailContent(draft);
+
+    // Send the email using Gmail API
+    const response = await window.gapi.client.gmail.users.messages.send({
+      userId: 'me',
+      resource: {
+        raw: encodedEmail
+      }
+    });
+
+    console.log('Email sent successfully:', response.result);
+    return response.result.id;
+  } catch (error: any) {
+    console.error('Error sending email:', {
+      error,
+      errorMessage: error.message,
+      errorDetails: error.result?.error?.message,
+      errorResponse: error.result
+    });
+    throw error;
+  }
+};
+
+// Create RFC 5322 formatted email content
+const createEmailContent = async (draft: DraftEmail): Promise<{ raw: string, recipientEmail: string }> => {
+  // Get user's email for From header
+  const profile = await window.gapi.client.gmail.users.getProfile({
+    userId: 'me'
+  });
+  const fromEmail = profile.result.emailAddress;
+
+  // Clean and validate email - only keep the actual email address
+  const cleanEmail = draft.to
+    .split(' ')
+    .find(part => part.includes('@')) // Find the part containing @
+    ?.replace(/[<>]/g, '') // Remove any angle brackets
+    .trim();
+    
+  if (!cleanEmail) {
+    throw new Error('No valid email address found');
+  }
+  
+  // Basic email validation
+  const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+  if (!emailRegex.test(cleanEmail)) {
+    throw new Error('Invalid recipient email address');
+  }
+
+  // Create RFC 5322 formatted email with proper headers
+  const emailLines = [
+    'MIME-Version: 1.0',
+    'Content-Type: text/plain; charset="UTF-8"',
+    'Content-Transfer-Encoding: quoted-printable',
+    `From: ${formatEmailAddress(fromEmail)}`,
+    `To: ${formatEmailAddress(cleanEmail)}`,
+    `Subject: ${draft.subject}`,
+    '',
+    draft.body
+  ];
+
+  // Join with proper CRLF line endings
+  const email = emailLines.join('\r\n');
+
+  // Encode the email in base64URL format
+  const encodedEmail = btoa(unescape(encodeURIComponent(email)))
+    .replace(/\+/g, '-')
+    .replace(/\//g, '_')
+    .replace(/=+$/, '');
+
+  return { raw: encodedEmail, recipientEmail: cleanEmail };
+};
+
+// Create a draft email
 export const createDraft = async (draft: DraftEmail): Promise<string> => {
   try {
     // Validate draft fields
@@ -502,73 +686,9 @@ export const createDraft = async (draft: DraftEmail): Promise<string> => {
       throw new Error('Missing required fields in draft email');
     }
 
-    // Clean and validate email - only keep the actual email address
-    const cleanEmail = draft.to
-      .split(' ')
-      .find(part => part.includes('@')) // Find the part containing @
-      ?.replace(/[<>]/g, '') // Remove any angle brackets
-      .trim();
-      
-    console.log('Cleaned email for validation:', cleanEmail);
-    
-    if (!cleanEmail) {
-      throw new Error('No valid email address found');
-    }
-    
-    // Basic email validation
-    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-    if (!emailRegex.test(cleanEmail)) {
-      console.log('Email validation failed for:', cleanEmail);
-      throw new Error('Invalid recipient email address');
-    }
-    
-    // Use the cleaned email
-    draft.to = cleanEmail;
-
     await ensureAuthenticated();
 
-    // Get user's email for From header
-    const profile = await window.gapi.client.gmail.users.getProfile({
-      userId: 'me'
-    });
-    const fromEmail = profile.result.emailAddress;
-
-    // Format the email addresses with proper RFC 5322 format
-    const formatEmailAddress = (email: string, name?: string) => {
-      return name ? `${name} <${email}>` : `<${email}>`;
-    };
-
-    // Create RFC 5322 formatted email with proper headers
-    const emailLines = [
-      'MIME-Version: 1.0',
-      'Content-Type: text/plain; charset="UTF-8"',
-      'Content-Transfer-Encoding: quoted-printable',
-      `From: ${formatEmailAddress(fromEmail)}`,
-      `To: ${formatEmailAddress(draft.to)}`,
-      `Subject: ${draft.subject}`,
-      '',
-      draft.body
-    ];
-
-    // Join with proper CRLF line endings
-    const email = emailLines.join('\r\n');
-
-    console.log('Raw email content:', email); // Debug log
-
-    // Encode the email in base64URL format
-    const encodedEmail = btoa(unescape(encodeURIComponent(email)))
-      .replace(/\+/g, '-')
-      .replace(/\//g, '_')
-      .replace(/=+$/, '');
-
-    console.log('Creating draft with payload:', { // Debug log
-      userId: 'me',
-      resource: {
-        message: {
-          raw: encodedEmail.substring(0, 100) + '...' // Truncate for logging
-        }
-      }
-    });
+    const { raw: encodedEmail } = await createEmailContent(draft);
 
     // Create the draft using Gmail API
     const response = await window.gapi.client.gmail.users.drafts.create({

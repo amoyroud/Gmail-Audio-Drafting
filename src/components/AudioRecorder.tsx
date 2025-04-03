@@ -22,7 +22,7 @@ import SendIcon from '@mui/icons-material/Send';
 // Services
 import { transcribeSpeech } from '../services/elevenlabsService';
 import { generateDraftResponse } from '../services/mistralService';
-import { createDraft } from '../services/gmailService';
+import { createDraft, sendEmail } from '../services/gmailService';
 import { Email, DraftGenerationParams } from '../types/types';
 
 // Supported audio formats for ElevenLabs API
@@ -222,6 +222,23 @@ const AudioRecorder: React.FC<AudioRecorderProps> = ({ selectedEmail, onDraftSav
       );
     } finally {
       setSavingDraft(false);
+    }
+  };
+
+  const handleSendEmail = async () => {
+    try {
+      const messageId = await sendEmail({
+        to: selectedEmail?.from.email || '',
+        subject: `Re: ${selectedEmail?.subject || ''}`,
+        body: draftReply
+      });
+      console.log('Email sent with ID:', messageId);
+      if (onDraftSaved) onDraftSaved(); // Refresh the email list
+      // Clear the transcription and draft
+      setTranscription('');
+      setDraftReply('');
+    } catch (error) {
+      console.error('Error sending email:', error);
     }
   };
 
@@ -431,7 +448,7 @@ const AudioRecorder: React.FC<AudioRecorderProps> = ({ selectedEmail, onDraftSav
               mb: 2
             }}>
               <Typography variant="subtitle1" sx={{ fontWeight: 600, color: 'text.primary' }}>
-                Your Transcription
+
               </Typography>
             </Box>
             <Box sx={{
@@ -564,7 +581,7 @@ const AudioRecorder: React.FC<AudioRecorderProps> = ({ selectedEmail, onDraftSav
           )}
 
           {draftReply && (
-            <Box sx={{ display: 'flex', justifyContent: 'center', mt: 3 }}>
+            <Box sx={{ display: 'flex', justifyContent: 'space-between', mt: 3 }}>
               <Button
                 variant="contained"
                 color="primary"
@@ -580,6 +597,24 @@ const AudioRecorder: React.FC<AudioRecorderProps> = ({ selectedEmail, onDraftSav
                 }}
               >
                 {savingDraft ? 'Saving...' : 'Save as Draft in Gmail'}
+              </Button>
+              <Button
+                variant="contained"
+                color="primary"
+                onClick={handleSendEmail}
+                disabled={!draftReply || processingAudio}
+                startIcon={<SendIcon />}
+                sx={{
+                  mt: 2,
+                  mb: 2,
+                  width: '100%',
+                  bgcolor: '#1a73e8',
+                  '&:hover': {
+                    bgcolor: '#1557b0'
+                  }
+                }}
+              >
+                Send Email
               </Button>
             </Box>
           )}
