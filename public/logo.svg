@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg width="512" height="512" viewBox="0 0 512 512" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <!-- Circular gradient background -->
+  <circle cx="256" cy="256" r="256" fill="url(#paint0_radial)"/>
+  
+  <!-- Microphone icon -->
+  <path d="M256 300C283.6 300 306 277.6 306 250V170C306 142.4 283.6 120 256 120C228.4 120 206 142.4 206 170V250C206 277.6 228.4 300 256 300Z" fill="white"/>
+  <path d="M346 230H336C330.5 230 326 234.5 326 240V250C326 288.7 294.7 320 256 320C217.3 320 186 288.7 186 250V240C186 234.5 181.5 230 176 230H166C160.5 230 156 234.5 156 240V250C156 300.1 192.1 341.5 240 349.2V380H196C190.5 380 186 384.5 186 390V400C186 405.5 190.5 410 196 410H316C321.5 410 326 405.5 326 400V390C326 384.5 321.5 380 316 380H272V349.2C319.9 341.5 356 300.1 356 250V240C356 234.5 351.5 230 346 230Z" fill="white"/>
+  
+  <!-- Email envelope -->
+  <path d="M376 140H136C122.7 140 112 150.7 112 164V348C112 361.3 122.7 372 136 372H376C389.3 372 400 361.3 400 348V164C400 150.7 389.3 140 376 140Z" stroke="white" stroke-width="12" stroke-linecap="round" stroke-linejoin="round"/>
+  <path d="M112 164L256 268L400 164" stroke="white" stroke-width="12" stroke-linecap="round" stroke-linejoin="round"/>
+  
+  <!-- Gradient definitions -->
+  <defs>
+    <radialGradient id="paint0_radial" cx="0" cy="0" r="1" gradientUnits="userSpaceOnUse" gradientTransform="translate(256 256) rotate(90) scale(256)">
+      <stop offset="0" stop-color="#2196F3"/>
+      <stop offset="1" stop-color="#21CBF3"/>
+    </radialGradient>
+  </defs>
+</svg>

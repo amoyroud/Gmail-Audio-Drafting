@@ -1,21 +1,23 @@
-import React, { useRef, useState } from 'react';
+import React, { useState, useRef } from 'react';
+import { useTheme } from '@mui/material/styles';
 import {
   Box,
   Button,
-  CircularProgress,
-  Typography,
-  Paper,
-  IconButton,
-  TextField,
   Card,
   CardContent,
-  Alert
+  CircularProgress,
+  IconButton,
+  Paper,
+  TextField,
+  Typography,
+  Alert,
+  Tooltip
 } from '@mui/material';
 import MicIcon from '@mui/icons-material/Mic';
 import StopIcon from '@mui/icons-material/Stop';
-import SendIcon from '@mui/icons-material/Send';
 import EditIcon from '@mui/icons-material/Edit';
 import ContentCopyIcon from '@mui/icons-material/ContentCopy';
+import SendIcon from '@mui/icons-material/Send';
 
 // Services
 import { transcribeSpeech } from '../services/elevenlabsService';
@@ -27,6 +29,7 @@ import { Email, DraftGenerationParams } from '../types/types';
 const SUPPORTED_MIME_TYPES = [
   'audio/webm',
   'audio/mp4',
+  'audio/ogg;codecs=opus',
   'audio/wav',
   'audio/mpeg'
 ];
@@ -128,10 +131,10 @@ const AudioRecorder: React.FC<AudioRecorderProps> = ({ selectedEmail, onDraftSav
     
     try {
       const params: DraftGenerationParams = {
-        emailSubject: selectedEmail.subject,
         transcribedText,
-        senderName: selectedEmail.from.name || selectedEmail.from.email,
-        emailBody: ''
+        emailSubject: selectedEmail?.subject || '',
+        emailBody: selectedEmail?.body || '',
+        senderName: selectedEmail?.from.name || selectedEmail?.from.email || ''
       };
       
       const draft = await generateDraftResponse(params);
@@ -222,26 +225,154 @@ const AudioRecorder: React.FC<AudioRecorderProps> = ({ selectedEmail, onDraftSav
     }
   };
 
+  const theme = useTheme();
+  
   return (
-    <Card>
-      <CardContent>
-        <Typography variant="h6" gutterBottom>
-          Record Your Response
+    <Box>
+      {/* Email Subject Header */}
+      <Box 
+        sx={{
+          mb: 3,
+          display: 'flex',
+          flexDirection: 'column',
+          gap: 0.5
+        }}
+      >
+        <Typography 
+          variant="subtitle2" 
+          color="text.secondary"
+          sx={{ fontWeight: 500 }}
+        >
+          Replying to:
         </Typography>
-        
-        {error && (
-          <Typography color="error" sx={{ mb: 2 }}>
-            {error}
-          </Typography>
-        )}
+        <Typography 
+          variant="h6" 
+          sx={{ 
+            fontWeight: 600,
+            lineHeight: 1.3
+          }}
+        >
+          {selectedEmail?.subject || "Email Subject"}
+        </Typography>
+        <Typography variant="body2" color="text.secondary">
+          From: {selectedEmail?.from?.name || selectedEmail?.from?.email || "Sender"}
+        </Typography>
+      </Box>
+      
+      {/* Status Messages */}
+      {error && (
+        <Alert 
+          severity="error" 
+          sx={{ 
+            mb: 3,
+            borderRadius: '8px',
+            '& .MuiAlert-icon': { alignItems: 'center' }
+          }}
+        >
+          {error}
+        </Alert>
+      )}
 
-        {success && (
-          <Typography color="success.main" sx={{ mb: 2 }}>
-            {success}
-          </Typography>
+      {success && (
+        <Alert 
+          severity="success" 
+          sx={{ 
+            mb: 3,
+            borderRadius: '8px',
+            '& .MuiAlert-icon': { alignItems: 'center' }
+          }}
+        >
+          {success}
+        </Alert>
+      )}
+      
+      {/* Recording UI */}
+      <Paper 
+        elevation={0}
+        sx={{ 
+          p: 3, 
+          mb: 3, 
+          borderRadius: '12px',
+          border: '1px solid',
+          borderColor: 'divider',
+          backgroundColor: theme => theme.palette.mode === 'dark' ? 'rgba(255,255,255,0.03)' : 'rgba(0,0,0,0.01)',
+          display: 'flex',
+          flexDirection: 'column',
+          alignItems: 'center',
+          justifyContent: 'center',
+          position: 'relative'
+        }}
+      >
+        {!audioBlob && !isRecording && !processingAudio && (
+          <Box sx={{ textAlign: 'center', mb: 2 }}>
+            <Typography variant="h6" gutterBottom>
+              Record Your Response
+            </Typography>
+            <Typography variant="body2" color="text.secondary" sx={{ mb: 2, maxWidth: 400, mx: 'auto' }}>
+              Click the microphone button below to start recording your response. Speak clearly for best results.
+            </Typography>
+          </Box>
         )}
         
-        <Box sx={{ display: 'flex', justifyContent: 'center', my: 2 }}>
+        {isRecording && (
+          <Box 
+            sx={{ 
+              position: 'absolute',
+              top: 0,
+              left: 0,
+              right: 0,
+              bottom: 0,
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              flexDirection: 'column',
+              backgroundColor: theme => theme.palette.mode === 'dark' ? 'rgba(0,0,0,0.5)' : 'rgba(0,0,0,0.05)',
+              borderRadius: '12px',
+              zIndex: 1
+            }}
+          >
+            <Box 
+              sx={{ 
+                width: 80, 
+                height: 80, 
+                borderRadius: '50%',
+                backgroundColor: 'error.main',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                boxShadow: '0 0 0 rgba(244, 67, 54, 0.4)',
+                animation: 'pulse 1.5s infinite',
+                '@keyframes pulse': {
+                  '0%': {
+                    boxShadow: '0 0 0 0 rgba(244, 67, 54, 0.4)'
+                  },
+                  '70%': {
+                    boxShadow: '0 0 0 20px rgba(244, 67, 54, 0)'
+                  },
+                  '100%': {
+                    boxShadow: '0 0 0 0 rgba(244, 67, 54, 0)'
+                  }
+                }
+              }}
+            >
+              <MicIcon sx={{ fontSize: 40, color: 'white' }} />
+            </Box>
+            <Typography variant="h6" sx={{ mt: 2, color: 'error.main', fontWeight: 600 }}>
+              Recording...
+            </Typography>
+            <Button
+              variant="outlined"
+              color="error"
+              onClick={stopRecording}
+              startIcon={<StopIcon />}
+              sx={{ mt: 2, borderRadius: '20px' }}
+            >
+              Stop Recording
+            </Button>
+          </Box>
+        )}
+        
+        <Box sx={{ display: 'flex', justifyContent: 'center', my: 2, position: 'relative', zIndex: 0 }}>
           {!isRecording ? (
             <Button
               variant="contained"
@@ -249,109 +380,194 @@ const AudioRecorder: React.FC<AudioRecorderProps> = ({ selectedEmail, onDraftSav
               startIcon={<MicIcon />}
               onClick={startRecording}
               disabled={isRecording || processingAudio || generatingDraft}
+              sx={{ 
+                borderRadius: '24px', 
+                px: 3,
+                py: 1.5,
+                boxShadow: 2
+              }}
             >
               Start Recording
             </Button>
-          ) : (
-            <Button
-              variant="contained"
-              color="secondary"
-              startIcon={<StopIcon />}
-              onClick={stopRecording}
-            >
-              Stop Recording
-            </Button>
-          )}
+          ) : null}
         </Box>
 
         {processingAudio && (
-          <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'center', mt: 2 }}>
-            <CircularProgress size={24} sx={{ mr: 1 }} />
-            <Typography>Transcribing audio...</Typography>
-          </Box>
-        )}
-
-        {transcription && (
-          <Box sx={{ mt: 2 }}>
-            <Typography variant="subtitle1" gutterBottom>
-              Transcription:
-            </Typography>
-            <Paper variant="outlined" sx={{ p: 2 }}>
-              <Typography variant="body2">{transcription}</Typography>
-            </Paper>
-          </Box>
-        )}
-
-        {transcription && (
-          <Box sx={{ mt: 3 }}>
-            <Box sx={{ 
+          <Box 
+            sx={{ 
               display: 'flex', 
-              justifyContent: 'space-between', 
+              flexDirection: 'column',
               alignItems: 'center', 
-              mb: 2 
-            }}>
-              <Typography variant="h6">
-                AI Generated Draft
-              </Typography>
-              <Box>
+              justifyContent: 'center', 
+              my: 3,
+              gap: 2
+            }}
+          >
+            <CircularProgress size={40} />
+            <Typography variant="subtitle1">
+              Transcribing your audio...
+            </Typography>
+          </Box>
+        )}
+      </Paper>
+
+      {/* Transcription Section */}
+      {transcription && (
+        <Paper 
+          elevation={0}
+          sx={{ 
+            p: 3, 
+            mb: 3, 
+            borderRadius: '12px',
+            border: '1px solid',
+            borderColor: 'divider'
+          }}
+        >
+          <Typography variant="subtitle1" gutterBottom sx={{ fontWeight: 600, color: 'text.primary' }}>
+            Your Transcription
+          </Typography>
+          <Typography 
+            variant="body2" 
+            sx={{ 
+              whiteSpace: 'pre-wrap',
+              lineHeight: 1.6,
+              color: 'text.secondary'
+            }}
+          >
+            {transcription}
+          </Typography>
+        </Paper>
+      )}
+
+      {/* AI Draft Section */}
+      {transcription && (
+        <Paper 
+          elevation={0}
+          sx={{ 
+            p: 3, 
+            mb: 3, 
+            borderRadius: '12px',
+            border: '1px solid',
+            borderColor: 'divider',
+            position: 'relative'
+          }}
+        >
+          <Box sx={{ 
+            display: 'flex', 
+            justifyContent: 'space-between', 
+            alignItems: 'center', 
+            mb: 2 
+          }}>
+            <Typography variant="subtitle1" sx={{ fontWeight: 600, color: 'text.primary' }}>
+              AI-Generated Draft
+            </Typography>
+            <Box>
+              <Tooltip title={editMode ? "Editing mode active" : "Edit draft"}>
                 <IconButton 
                   size="small" 
                   onClick={() => setEditMode(!editMode)}
                   color={editMode ? "primary" : "default"}
-                  title="Edit draft"
+                  sx={{ 
+                    border: editMode ? '1px solid' : 'none',
+                    borderColor: editMode ? 'primary.main' : 'transparent',
+                    mr: 1
+                  }}
                 >
-                  <EditIcon />
+                  <EditIcon fontSize="small" />
                 </IconButton>
+              </Tooltip>
+              <Tooltip title="Copy to clipboard">
                 <IconButton 
                   size="small" 
-                  onClick={() => navigator.clipboard.writeText(draftReply)}
-                  title="Copy to clipboard"
+                  onClick={() => {
+                    navigator.clipboard.writeText(draftReply);
+                    // Show a temporary success message
+                    const tempSuccess = setSuccess;
+                    tempSuccess("Copied to clipboard!");
+                    setTimeout(() => tempSuccess(null), 2000);
+                  }}
                 >
-                  <ContentCopyIcon />
+                  <ContentCopyIcon fontSize="small" />
                 </IconButton>
-              </Box>
+              </Tooltip>
             </Box>
-
-            {generatingDraft ? (
-              <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'center', mt: 2 }}>
-                <CircularProgress size={24} sx={{ mr: 1 }} />
-                <Typography>Generating draft reply...</Typography>
-              </Box>
-            ) : editMode ? (
-              <TextField
-                fullWidth
-                multiline
-                rows={8}
-                value={draftReply}
-                onChange={(e) => setDraftReply(e.target.value)}
-                variant="outlined"
-                placeholder="Your AI-generated draft will appear here"
-              />
-            ) : (
-              <Paper variant="outlined" sx={{ p: 2 }}>
-                <Typography variant="body2" sx={{ whiteSpace: 'pre-wrap' }}>
-                  {draftReply || "Your AI-generated draft will appear here"}
-                </Typography>
-              </Paper>
-            )}
-
-            {draftReply && (
-              <Box sx={{ display: 'flex', justifyContent: 'center', mt: 3 }}>
-                <Button
-                  variant="contained"
-                  color="primary"
-                  startIcon={<SendIcon />}
-                  onClick={handleSaveDraft}
-                  disabled={savingDraft || !draftReply}
-                >
-                  {savingDraft ? 'Saving...' : 'Save as Draft in Gmail'}
-                </Button>
-              </Box>
-            )}
           </Box>
-        )}
-      </CardContent>
-    </Card>
+
+          {generatingDraft ? (
+            <Box sx={{ 
+              display: 'flex', 
+              flexDirection: 'column',
+              alignItems: 'center', 
+              justifyContent: 'center', 
+              py: 4,
+              gap: 2
+            }}>
+              <CircularProgress size={40} />
+              <Typography variant="subtitle1">
+                Generating your email draft...
+              </Typography>
+            </Box>
+          ) : editMode ? (
+            <TextField
+              fullWidth
+              multiline
+              rows={8}
+              value={draftReply}
+              onChange={(e) => setDraftReply(e.target.value)}
+              variant="outlined"
+              placeholder="Your AI-generated draft will appear here"
+              sx={{ 
+                '& .MuiOutlinedInput-root': {
+                  borderRadius: '8px',
+                  '& fieldset': { borderColor: 'divider' },
+                  '&:hover fieldset': { borderColor: 'primary.main' },
+                }
+              }}
+            />
+          ) : (
+            <Box 
+              sx={{ 
+                p: 2, 
+                borderRadius: '8px',
+                backgroundColor: theme => theme.palette.mode === 'dark' ? 'rgba(255,255,255,0.03)' : 'rgba(0,0,0,0.01)',
+                border: '1px solid',
+                borderColor: 'divider'
+              }}
+            >
+              <Typography 
+                variant="body2" 
+                sx={{ 
+                  whiteSpace: 'pre-wrap',
+                  lineHeight: 1.6
+                }}
+              >
+                {draftReply || "Your AI-generated draft will appear here"}
+              </Typography>
+            </Box>
+          )}
+
+          {draftReply && (
+            <Box sx={{ display: 'flex', justifyContent: 'center', mt: 3 }}>
+              <Button
+                variant="contained"
+                color="primary"
+                startIcon={<SendIcon />}
+                onClick={handleSaveDraft}
+                disabled={savingDraft || !draftReply}
+                sx={{ 
+                  borderRadius: '24px', 
+                  px: 3,
+                  py: 1.5,
+                  boxShadow: 2
+                }}
+              >
+                {savingDraft ? 'Saving...' : 'Save as Draft in Gmail'}
+              </Button>
+            </Box>
+          )}
+        </Paper>
+      )}
+    </Box>
   );
 };
 

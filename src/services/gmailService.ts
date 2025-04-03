@@ -36,10 +36,9 @@ const loadGisScript = async (): Promise<void> => {
 };
 
 // Gmail API configuration
+// Use the full Gmail scope for complete access
 const GMAIL_SCOPES = process.env.REACT_APP_GMAIL_API_SCOPE?.split(' ') || [
-  'https://www.googleapis.com/auth/gmail.readonly',
-  'https://www.googleapis.com/auth/gmail.compose',
-  'https://www.googleapis.com/auth/gmail.metadata'
+  'https://mail.google.com/'
 ];
 
 const CLIENT_ID = process.env.REACT_APP_GOOGLE_CLIENT_ID;
@@ -203,20 +202,63 @@ export const signIn = async (): Promise<void> => {
   }
 };
 
+
+
 /**
  * Sign out from Gmail
  */
+export const archiveEmail = async (emailId: string): Promise<void> => {
+  await ensureAuthenticated();
+
+  try {
+    // Directly use the GAPI client which handles token management for us
+    await window.gapi.client.gmail.users.messages.modify({
+      userId: 'me',
+      id: emailId,
+      resource: {
+        removeLabelIds: ['INBOX']
+      }
+    });
+  } catch (error) {
+    console.error('Error archiving email:', error);
+    throw error;
+  }
+};
+
+/**
+ * Sign out and clear all tokens
+ */
 export const signOut = async (): Promise<void> => {
   try {
-    // Just clear local storage - there's no explicit revoke in this flow
-    localStorage.removeItem('gmail_auth_code');
-    localStorage.removeItem('gmail_token');
+    // Clear token from gapi
+    if (window.gapi?.client?.getToken()) {
+      window.gapi.client.setToken('');
+    }
     
-    // Dispatch event to update UI
+    // Clear token from Google Identity Services
+    if (window.google?.accounts?.oauth2) {
+      window.google.accounts.oauth2.revoke(
+        localStorage.getItem('gmail_auth_code') || '',
+        () => console.log('Token revoked')
+      );
+    }
+    
+    // Clear all local storage items
+    localStorage.removeItem('gmail_auth_code');
+    localStorage.removeItem('gmail_access_token');
+    localStorage.removeItem('gmail_refresh_token');
+    
+    // Reset initialization flag
+    window.googleAuthInitialized = false;
+    initPromise = null;
+    isInitializing = false;
+    
     window.dispatchEvent(new Event('gmail_signed_out'));
+    
+    // Redirect to Google logout page to ensure complete sign out
+    window.location.href = 'https://accounts.google.com/logout';
   } catch (error) {
     console.error('Error signing out:', error);
-    throw error;
   }
 };
 
@@ -313,14 +355,114 @@ export const fetchEmails = async (): Promise<Email[]> => {
 };
 
 export const getEmailById = async (emailId: string): Promise<Email> => {
-  const emails = await fetchEmails();
-  const email = emails.find(e => e.id === emailId);
-  
-  if (!email) {
-    throw new Error('Email not found');
+  await ensureAuthenticated();
+
+  try {
+    // Get the message with full headers but minimal body
+    const response = await window.gapi.client.gmail.users.messages.get({
+      userId: 'me',
+      id: emailId,
+      format: 'metadata',
+      metadataHeaders: ['Subject', 'From', 'Date', 'Content-Type']
+    });
+
+    const message = response.result;
+
+    // Parse headers
+    const headers = message.payload.headers;
+    const subject = headers.find((h: any) => h.name === 'Subject')?.value || 'No Subject';
+    const from = headers.find((h: any) => h.name === 'From')?.value || '';
+    const date = headers.find((h: any) => h.name === 'Date')?.value || new Date().toISOString();
+
+    // Extract and clean the message body
+    const extractTextFromPart = (part: any): string => {
+      if (!part) return '';
+
+      if (part.body?.data) {
+        return atob(part.body.data.replace(/-/g, '+').replace(/_/g, '/'));
+      }
+
+      if (part.parts) {
+        // For multipart messages, prefer text/plain over text/html
+        const textPart = part.parts.find((p: any) => p.mimeType === 'text/plain') ||
+                        part.parts.find((p: any) => p.mimeType === 'text/html');
+        if (textPart) {
+          return extractTextFromPart(textPart);
+        }
+      }
+
+      return '';
+    };
+
+    const cleanContent = (content: string): string => {
+      // First extract URLs to preserve them
+      const urls: string[] = [];
+      let cleaned = content.replace(/https?:\/\/[^\s<]+/g, (url) => {
+        urls.push(url);
+        return `__URL${urls.length - 1}__`;
+      });
+
+      // Remove HTML tags
+      cleaned = cleaned.replace(/<[^>]*>/g, '');
+      
+      // Replace HTML entities
+      cleaned = cleaned.replace(/&nbsp;/g, ' ')
+        .replace(/&amp;/g, '&')
+        .replace(/&lt;/g, '<')
+        .replace(/&gt;/g, '>')
+        .replace(/&quot;/g, '"');
+      
+      // Remove email metadata
+      cleaned = cleaned.replace(/Content-Type:[^\n]*\n/g, '')
+        .replace(/Content-Transfer-Encoding:[^\n]*\n/g, '')
+        .replace(/--[0-9a-zA-Z]+/g, '')
+        .replace(/charset=[^\n]*\n/g, '')
+        .replace(/=\r\n/g, '') // Remove quoted-printable line breaks
+        .replace(/=[0-9A-F]{2}/g, ''); // Remove quoted-printable hex codes
+      
+      // Restore URLs
+      urls.forEach((url, index) => {
+        cleaned = cleaned.replace(`__URL${index}__`, url);
+      });
+
+      // Clean up line breaks and whitespace
+      return cleaned
+        .split('\n')
+        .filter(line => 
+          !line.startsWith('Content-') && 
+          !line.startsWith('--') && 
+          !line.includes('charset=') &&
+          line.trim() !== ''
+        )
+        .join('\n')
+        .trim();
+    };
+
+    // Get raw content and clean it
+    const rawContent = extractTextFromPart(message.payload);
+    const body = rawContent ? cleanContent(rawContent) : message.snippet;
+
+    // Parse the from field to extract name and email
+    const fromMatch = from.match(/(?:"?([^"]*?)"?\s)?(?:<)?([^>]+)(?:>)?/);
+    const fromName = fromMatch ? fromMatch[1] || fromMatch[2] : from;
+    const fromEmail = fromMatch ? fromMatch[2] : from;
+
+    return {
+      id: message.id,
+      subject,
+      from: {
+        name: fromName,
+        email: fromEmail
+      },
+      date: new Date(date).toISOString(),
+      snippet: message.snippet || '',
+      body: body || message.snippet || '',
+      unread: message.labelIds?.includes('UNREAD') || false
+    };
+  } catch (error) {
+    console.error('Error fetching email details:', error);
+    throw error;
   }
-  
-  return email;
 };
 
 /**

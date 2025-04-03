@@ -1,9 +1,13 @@
-import React, { ReactNode } from 'react';
+import React, { ReactNode, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { AppBar, Toolbar, IconButton, Typography, Box, Container, useMediaQuery, useTheme, Menu, MenuItem, Avatar } from '@mui/material';
+import { AppBar, Toolbar, IconButton, Typography, Box, Container, useMediaQuery, useTheme, Menu, MenuItem, Avatar, Fab, Modal } from '@mui/material';
 import MenuIcon from '@mui/icons-material/Menu';
 import AccountCircleIcon from '@mui/icons-material/AccountCircle';
+import MicIcon from '@mui/icons-material/Mic';
 import { signOut } from '../services/gmailService';
+import { Email } from '../types/types';
+import { useEmail } from '../context/EmailContext';
+import AudioRecorder from './AudioRecorder';
 
 interface LayoutProps {
   children: ReactNode;
@@ -14,6 +18,7 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
   const theme = useTheme();
   const isMobile = useMediaQuery(theme.breakpoints.down('sm'));
   const [anchorEl, setAnchorEl] = React.useState<null | HTMLElement>(null);
+  const { selectedEmail, setSelectedEmail, isRecorderOpen, setIsRecorderOpen } = useEmail();
 
   const handleMenuOpen = (event: React.MouseEvent<HTMLElement>) => {
     setAnchorEl(event.currentTarget);
@@ -105,6 +110,65 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
           © {new Date().getFullYear()} Audio Email Assistant
         </Typography>
       </Box>
+
+      {isMobile && (
+        <>
+          <Fab
+            color="primary"
+            aria-label="record audio"
+            onClick={() => setIsRecorderOpen(true)}
+            sx={{
+              position: 'fixed',
+              bottom: 16,
+              right: 16,
+              zIndex: 1000
+            }}
+          >
+            <MicIcon />
+          </Fab>
+
+          <Modal
+            open={isRecorderOpen}
+            onClose={() => setIsRecorderOpen(false)}
+            aria-labelledby="audio-recorder-modal"
+            sx={{
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              p: 2
+            }}
+          >
+            <Box sx={{
+              width: '100%',
+              maxWidth: '600px',
+              maxHeight: '90vh',
+              overflow: 'auto',
+              bgcolor: 'background.paper',
+              borderRadius: 1,
+              p: 2
+            }}>
+              {selectedEmail ? (
+                <AudioRecorder
+                  selectedEmail={selectedEmail}
+                  onDraftSaved={() => {
+                    setIsRecorderOpen(false);
+                    setSelectedEmail(undefined);
+                  }}
+                />
+              ) : (
+                <Box sx={{ p: 3, textAlign: 'center' }}>
+                  <Typography variant="body1" gutterBottom>
+                    No email selected
+                  </Typography>
+                  <Typography variant="body2" color="text.secondary">
+                    Please select an email from your inbox to respond to.
+                  </Typography>
+                </Box>
+              )}
+            </Box>
+          </Modal>
+        </>
+      )}
     </Box>
   );
 };

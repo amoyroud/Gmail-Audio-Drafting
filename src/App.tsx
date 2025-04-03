@@ -1,7 +1,5 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Routes, Route, Navigate, useNavigate } from 'react-router-dom';
-import { ThemeProvider, createTheme } from '@mui/material/styles';
-import CssBaseline from '@mui/material/CssBaseline';
 
 // Pages
 import HomePage from './pages/HomePage';
@@ -14,27 +12,10 @@ import ServiceTester from './components/ServiceTester';
 import Layout from './components/Layout';
 import LoadingScreen from './components/LoadingScreen';
 import { isSignedIn } from './services/gmailService';
+import { EmailProvider } from './context/EmailContext';
 
-// Create a responsive theme
-const theme = createTheme({
-  palette: {
-    primary: {
-      main: '#1976d2',
-    },
-    secondary: {
-      main: '#dc004e',
-    },
-  },
-  components: {
-    MuiButton: {
-      styleOverrides: {
-        root: {
-          borderRadius: 8,
-        },
-      },
-    },
-  },
-});
+// Theme
+import ThemeProvider from './theme/ThemeProvider';
 
 // Define a protected route component
 const ProtectedRoute = ({ children }: { children: React.ReactNode }) => {
@@ -90,40 +71,41 @@ function App() {
   console.log('App: Rendering App component');
   
   return (
-    <ThemeProvider theme={theme}>
-      <CssBaseline />
-      <Routes>
-        <Route path="/login" element={<LoginPage />} />
-        <Route path="/" element={
-          <ProtectedRoute>
-            <Layout>
-              <HomePage />
-            </Layout>
-          </ProtectedRoute>
-        } />
-        <Route path="/email/:emailId" element={
-          <ProtectedRoute>
-            <Layout>
-              <EmailViewPage />
-            </Layout>
-          </ProtectedRoute>
-        } />
-        <Route path="/test" element={
-          <ProtectedRoute>
-            <Layout>
-              <TestPage />
-            </Layout>
-          </ProtectedRoute>
-        } />
-        <Route path="/service-test" element={
-          <ProtectedRoute>
-            <Layout>
-              <ServiceTester />
-            </Layout>
-          </ProtectedRoute>
-        } />
-        <Route path="*" element={<Navigate to="/" replace />} />
-      </Routes>
+    <ThemeProvider>
+      <EmailProvider>
+        <Routes>
+          <Route path="/login" element={<LoginPage />} />
+          <Route path="/" element={
+            <ProtectedRoute>
+              <Layout>
+                <HomePage />
+              </Layout>
+            </ProtectedRoute>
+          } />
+          <Route path="/email/:emailId" element={
+            <ProtectedRoute>
+              <Layout>
+                <EmailViewPage />
+              </Layout>
+            </ProtectedRoute>
+          } />
+          <Route path="/test" element={
+            <ProtectedRoute>
+              <Layout>
+                <TestPage />
+              </Layout>
+            </ProtectedRoute>
+          } />
+          <Route path="/service-test" element={
+            <ProtectedRoute>
+              <Layout>
+                <ServiceTester />
+              </Layout>
+            </ProtectedRoute>
+          } />
+          <Route path="*" element={<Navigate to="/" replace />} />
+        </Routes>
+      </EmailProvider>
     </ThemeProvider>
   );
 }

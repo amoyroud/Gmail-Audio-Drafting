@@ -11,19 +11,22 @@ import {
   CardContent,
   Button,
   IconButton,
-  TextField
+  TextField,
+  Tooltip
 } from '@mui/material';
-import MicIcon from '@mui/icons-material/Mic';
-import StopIcon from '@mui/icons-material/Stop';
-import EditIcon from '@mui/icons-material/Edit';
 import SendIcon from '@mui/icons-material/Send';
-import ContentCopyIcon from '@mui/icons-material/ContentCopy';
+import ArchiveIcon from '@mui/icons-material/Archive';
+import MicIcon from '@mui/icons-material/Mic';
 import { Email } from '../types/types';
-import { getEmailById, createDraft } from '../services/gmailService';
+import { getEmailById, createDraft, archiveEmail } from '../services/gmailService';
+import { useNavigate } from 'react-router-dom';
 import AudioRecorder from '../components/AudioRecorder';
+import { useEmail } from '../context/EmailContext';
+import { Fab, useMediaQuery, useTheme } from '@mui/material';
 
 const EmailViewPage: React.FC = () => {
   const { emailId } = useParams<{ emailId: string }>();
+  const navigate = useNavigate();
   
   const [email, setEmail] = useState<Email | null>(null);
   const [loading, setLoading] = useState(true);
@@ -31,14 +34,20 @@ const EmailViewPage: React.FC = () => {
   const [success, setSuccess] = useState<string | null>(null);
   const [editMode, setEditMode] = useState(false);
   const [draftReply, setDraftReply] = useState('');
+  const { setSelectedEmail, setIsRecorderOpen } = useEmail();
+  const theme = useTheme();
+  const isMobile = useMediaQuery(theme.breakpoints.down('sm'));
 
   useEffect(() => {
+    setSelectedEmail(undefined); // Clear any previously selected email
+    
     const fetchEmailDetails = async () => {
       if (!emailId) return;
       
       try {
         const emailData = await getEmailById(emailId);
         setEmail(emailData);
+        setSelectedEmail(emailData); // Set the email in context
       } catch (err) {
         console.error('Error fetching email details:', err);
         setError('Failed to load email details');
@@ -81,12 +90,108 @@ const EmailViewPage: React.FC = () => {
   return (
     <Box sx={{ p: 3, maxWidth: 800, mx: 'auto' }}>
       <Paper sx={{ p: 3, mb: 3 }}>
-        <Typography variant="h6">{email.subject}</Typography>
-        <Typography variant="subtitle2" color="text.secondary">
-          From: {email.from.name} ({email.from.email})
-        </Typography>
+        <Box sx={{ mb: 3, display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+          <Box sx={{ flex: 1 }}>
+            <Typography 
+              variant="h6" 
+              gutterBottom 
+              sx={{ 
+                fontSize: '1.25rem',
+                fontWeight: 500,
+                color: 'text.primary'
+              }}
+            >
+              {email.subject}
+            </Typography>
+            <Box sx={{ 
+              display: 'flex', 
+              flexDirection: { xs: 'column', sm: 'row' },
+              justifyContent: 'space-between', 
+              alignItems: { xs: 'flex-start', sm: 'center' },
+              gap: 1
+            }}>
+              <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                <Typography 
+                  variant="subtitle2" 
+                  sx={{ 
+                    color: 'text.primary',
+                    fontWeight: 500
+                  }}
+                >
+                  {email.from.name}
+                </Typography>
+                <Typography 
+                  variant="body2" 
+                  sx={{ color: 'text.secondary' }}
+                >
+                  {email.from.email && `<${email.from.email}>`}
+                </Typography>
+              </Box>
+              <Typography 
+                variant="body2" 
+                sx={{ color: 'text.secondary' }}
+              >
+                {new Date(email.date).toLocaleString(undefined, {
+                  weekday: 'short',
+                  year: 'numeric',
+                  month: 'short',
+                  day: 'numeric',
+                  hour: '2-digit',
+                  minute: '2-digit'
+                })}
+              </Typography>
+            </Box>
+          </Box>
+          <Box>
+            <Tooltip title="Archive">
+              <IconButton
+                onClick={async () => {
+                  try {
+                    if (emailId) {
+                      await archiveEmail(emailId);
+                      // Show success message
+                      setSuccess('Email archived successfully');
+                      // Navigate back to inbox after a short delay
+                      setTimeout(() => navigate('/'), 1500);
+                    }
+                  } catch (error) {
+                    setError('Failed to archive email');
+                  }
+                }}
+                color="inherit"
+                sx={{ ml: 1 }}
+              >
+                <ArchiveIcon />
+              </IconButton>
+            </Tooltip>
+          </Box>
+        </Box>
         <Divider sx={{ my: 2 }} />
-        <Typography variant="body1">{email.body}</Typography>
+        <Typography 
+          variant="body1" 
+          component="div" 
+          sx={{ 
+            whiteSpace: 'pre-wrap',
+            wordBreak: 'break-word',
+            lineHeight: 1.5,
+            '& a': { 
+              color: 'primary.main',
+              textDecoration: 'none',
+              '&:hover': {
+                textDecoration: 'underline'
+              }
+            }
+          }}
+          dangerouslySetInnerHTML={{
+            __html: email.body.split('\n').map(line => {
+              // Convert URLs to clickable links
+              return line.replace(
+                /(https?:\/\/[^\s<]+)/g,
+                '<a href="$1" target="_blank" rel="noopener noreferrer">$1</a>'
+              );
+            }).join('<br />')
+          }}
+        />
       </Paper>
 
       {success && (
@@ -95,10 +200,20 @@ const EmailViewPage: React.FC = () => {
         </Alert>
       )}
 
-      <AudioRecorder
-        selectedEmail={email}
-        onDraftSaved={handleDraftSaved}
-      />
+      {/* Record Response FAB */}
+      <Fab
+        color="primary"
+        aria-label="record response"
+        onClick={() => setIsRecorderOpen(true)}
+        sx={{
+          position: 'fixed',
+          bottom: 16,
+          right: 16,
+          zIndex: 1000
+        }}
+      >
+        <MicIcon />
+      </Fab>
 
       {editMode ? (
         <Card sx={{ mt: 3 }}>
