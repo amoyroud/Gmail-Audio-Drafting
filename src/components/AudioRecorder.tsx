@@ -149,19 +149,74 @@ const AudioRecorder: React.FC<AudioRecorderProps> = ({ selectedEmail, onDraftSav
     setSavingDraft(true);
     setError(null);
     setSuccess(null);
-    
+
     try {
-      await createDraft({
-        to: selectedEmail.from.email,
+      // Validate we have the necessary data
+      if (!selectedEmail?.from?.email) {
+        throw new Error('No recipient email address found');
+      }
+      if (!selectedEmail?.subject) {
+        throw new Error('No subject found');
+      }
+      if (!draftReply) {
+        throw new Error('Draft reply is empty');
+      }
+
+      // Log the original email format
+      console.log('Original from email:', selectedEmail.from.email);
+      
+      // Extract just the email address part
+      let recipientEmail = selectedEmail.from.email;
+      
+      // First try to extract email from angle brackets format
+      const emailMatch = recipientEmail.match(/<([^>]+)>/)?.[1];
+      if (emailMatch) {
+        recipientEmail = emailMatch;
+      } else {
+        // If no angle brackets, take the last part after space (assuming "Name email@domain.com" format)
+        const parts = recipientEmail.split(' ');
+        recipientEmail = parts[parts.length - 1];
+      }
+      
+      // Clean up any remaining brackets and trim
+      recipientEmail = recipientEmail.replace(/[<>]/g, '').trim();
+      
+      console.log('Extracted email:', recipientEmail);
+      
+      // Create draft email object
+      const draft = {
+        to: recipientEmail,
         subject: `Re: ${selectedEmail.subject}`,
         body: draftReply
-      });
+      };
+
+      console.log('Creating draft with:', draft); // Debug log
+
+      // Save draft using Gmail API
+      const draftId = await createDraft(draft);
+      console.log('Draft saved with ID:', draftId);
       
-      setSuccess('Draft saved successfully! You can review and send it from your Gmail account.');
-      onDraftSaved?.();
-    } catch (err) {
-      console.error('Error saving draft:', err);
-      setError('Failed to save draft. Please try again.');
+      setSuccess('Draft saved successfully in Gmail!');
+      if (onDraftSaved) {
+        onDraftSaved();
+      }
+
+      // Clear the form
+      setTranscription('');
+      setDraftReply('');
+      setAudioBlob(null);
+      setEditMode(false);
+    } catch (err: any) {
+      console.error('Error saving draft:', {
+        error: err,
+        message: err.message,
+        details: err.result?.error?.message
+      });
+      setError(
+        err.message || 
+        err.result?.error?.message || 
+        'Failed to save draft in Gmail. Please try again.'
+      );
     } finally {
       setSavingDraft(false);
     }

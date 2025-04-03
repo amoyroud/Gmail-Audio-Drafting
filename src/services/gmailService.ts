@@ -323,7 +323,110 @@ export const getEmailById = async (emailId: string): Promise<Email> => {
   return email;
 };
 
-export const createDraft = async (draft: DraftEmail): Promise<void> => {
-  console.log('Creating draft:', draft);
-  // Mock implementation, in a real app this would use Gmail API
+/**
+ * Create a draft email using Gmail API
+ * @param draft The draft email to create
+ * @returns The ID of the created draft
+ */
+/**
+ * Create a draft email using Gmail API
+ * @param draft The draft email to create
+ * @returns The ID of the created draft
+ */
+export const createDraft = async (draft: DraftEmail): Promise<string> => {
+  try {
+    // Validate draft fields
+    if (!draft.to || !draft.subject || !draft.body) {
+      throw new Error('Missing required fields in draft email');
+    }
+
+    // Clean and validate email - only keep the actual email address
+    const cleanEmail = draft.to
+      .split(' ')
+      .find(part => part.includes('@')) // Find the part containing @
+      ?.replace(/[<>]/g, '') // Remove any angle brackets
+      .trim();
+      
+    console.log('Cleaned email for validation:', cleanEmail);
+    
+    if (!cleanEmail) {
+      throw new Error('No valid email address found');
+    }
+    
+    // Basic email validation
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(cleanEmail)) {
+      console.log('Email validation failed for:', cleanEmail);
+      throw new Error('Invalid recipient email address');
+    }
+    
+    // Use the cleaned email
+    draft.to = cleanEmail;
+
+    await ensureAuthenticated();
+
+    // Get user's email for From header
+    const profile = await window.gapi.client.gmail.users.getProfile({
+      userId: 'me'
+    });
+    const fromEmail = profile.result.emailAddress;
+
+    // Format the email addresses with proper RFC 5322 format
+    const formatEmailAddress = (email: string, name?: string) => {
+      return name ? `${name} <${email}>` : `<${email}>`;
+    };
+
+    // Create RFC 5322 formatted email with proper headers
+    const emailLines = [
+      'MIME-Version: 1.0',
+      'Content-Type: text/plain; charset="UTF-8"',
+      'Content-Transfer-Encoding: quoted-printable',
+      `From: ${formatEmailAddress(fromEmail)}`,
+      `To: ${formatEmailAddress(draft.to)}`,
+      `Subject: ${draft.subject}`,
+      '',
+      draft.body
+    ];
+
+    // Join with proper CRLF line endings
+    const email = emailLines.join('\r\n');
+
+    console.log('Raw email content:', email); // Debug log
+
+    // Encode the email in base64URL format
+    const encodedEmail = btoa(unescape(encodeURIComponent(email)))
+      .replace(/\+/g, '-')
+      .replace(/\//g, '_')
+      .replace(/=+$/, '');
+
+    console.log('Creating draft with payload:', { // Debug log
+      userId: 'me',
+      resource: {
+        message: {
+          raw: encodedEmail.substring(0, 100) + '...' // Truncate for logging
+        }
+      }
+    });
+
+    // Create the draft using Gmail API
+    const response = await window.gapi.client.gmail.users.drafts.create({
+      userId: 'me',
+      resource: {
+        message: {
+          raw: encodedEmail
+        }
+      }
+    });
+
+    console.log('Draft created successfully:', response.result);
+    return response.result.id;
+  } catch (error: any) {
+    console.error('Error creating draft:', {
+      error,
+      errorMessage: error.message,
+      errorDetails: error.result?.error?.message,
+      errorResponse: error.result
+    });
+    throw error;
+  }
 }; 
