@@ -1,8 +1,16 @@
 import { useEffect, useState } from 'react';
 
+export interface EmailTemplate {
+  id: string;
+  name: string;
+  content: string;
+  type: 'decline' | 'general';
+}
+
 export interface UserSettings {
   emailPromptTemplate: string;
   signature: string;
+  templates: EmailTemplate[];
 }
 
 const DEFAULT_SETTINGS: UserSettings = {
@@ -15,14 +23,27 @@ Context:
 - My transcribed voice notes about how to respond: "{transcribedText}"
 
 Task: Write a professional and friendly email response that:
-1. Addresses the sender appropriately
-2. References the original email subject and content very succinctly
-3. Incorporates the key points from my transcribed voice notes
-4. Maintains a friendly tone that is short and to the point, not verbose
-5. Sign with {signature}
+1. References the original email subject and content very succinctly
+2. Incorporates the key points from my transcribed voice notes
+3. Maintains a friendly tone that is short and to the point, not verbose
+4. Sign with {signature}
 
 Write the complete email response:`,
-  signature: 'Antoine'
+  signature: 'Antoine',
+  templates: [
+    {
+      id: 'decline-busy',
+      name: 'Decline - Busy',
+      content: 'Thank you for your email regarding [Meeting Request].\n\nUnfortunately, I need to decline at this time due to prior commitments. I appreciate your understanding.\n\nBest regards,\n{signature}',
+      type: 'decline'
+    },
+    {
+      id: 'decline-not-interested',
+      name: 'Decline - Not Interested',
+      content: 'Thank you for reaching out about [Topic].\n\nAfter careful consideration, I must decline as this does not align with my current priorities.\n\nBest regards,\n{signature}',
+      type: 'decline'
+    }
+  ]
 };
 
 // Store settings in localStorage

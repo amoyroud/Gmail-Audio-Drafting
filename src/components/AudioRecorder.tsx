@@ -1,27 +1,34 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { useTheme } from '@mui/material/styles';
-import {
-  Box,
-  Button,
-  CircularProgress,
-  IconButton,
-  Paper,
-  TextField,
-  Typography,
-  Alert,
-  Tooltip
-} from '@mui/material';
+import Box from '@mui/material/Box';
+import Button from '@mui/material/Button';
+import Paper from '@mui/material/Paper';
+import Typography from '@mui/material/Typography';
+import Alert from '@mui/material/Alert';
+import CircularProgress from '@mui/material/CircularProgress';
+import FormControl from '@mui/material/FormControl';
+import InputLabel from '@mui/material/InputLabel';
+import Select, { SelectChangeEvent } from '@mui/material/Select';
+import MenuItem from '@mui/material/MenuItem';
+import IconButton from '@mui/material/IconButton';
+import TextField from '@mui/material/TextField';
+import Tooltip from '@mui/material/Tooltip';
 import MicIcon from '@mui/icons-material/Mic';
 import StopIcon from '@mui/icons-material/Stop';
 import EditIcon from '@mui/icons-material/Edit';
 import ContentCopyIcon from '@mui/icons-material/ContentCopy';
 import SendIcon from '@mui/icons-material/Send';
+import ArchiveIcon from '@mui/icons-material/Archive';
 
 // Services
 import { transcribeSpeech } from '../services/elevenlabsService';
-import { generateDraftResponse } from '../services/mistralService';
-import { createDraft, sendEmail } from '../services/gmailService';
-import { Email, DraftGenerationParams } from '../types/types';
+import { createDraft, sendEmail, archiveEmail } from '../services/gmailService';
+import { executeAction } from '../services/actionService';
+import { Email, EmailActionType } from '../types/types';
+import { useSettings, EmailTemplate } from '../services/settingsService';
+
+// Components
+import ActionSelector from './ActionSelector';
 
 // Supported audio formats for ElevenLabs API
 const SUPPORTED_MIME_TYPES = [
@@ -46,6 +53,8 @@ const MOBILE_PREFERRED_MIME_TYPES = [
 interface AudioRecorderProps {
   selectedEmail: Email;
   onDraftSaved?: () => void;
+  initialAction?: EmailActionType;
+  onActionComplete?: () => void;
 }
 
 // Common styles for consistency
@@ -70,7 +79,9 @@ const primaryButtonStyles = {
   }
 };
 
-const AudioRecorder: React.FC<AudioRecorderProps> = ({ selectedEmail, onDraftSaved }) => {
+const AudioRecorder: React.FC<AudioRecorderProps> = ({ selectedEmail, onDraftSaved, initialAction, onActionComplete }) => {
+  const theme = useTheme();
+  
   // State to stabilize selectedEmail and prevent flickering
   const [stableEmail, setStableEmail] = useState<Email | null>(null);
   
@@ -80,9 +91,11 @@ const AudioRecorder: React.FC<AudioRecorderProps> = ({ selectedEmail, onDraftSav
       setStableEmail(selectedEmail);
     }
   }, [selectedEmail]);
+  
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const audioChunksRef = useRef<Blob[]>([]);
   
+  // Basic recording state
   const [isRecording, setIsRecording] = useState(false);
   const [audioBlob, setAudioBlob] = useState<Blob | null>(null);
   const [transcription, setTranscription] = useState('');
@@ -93,6 +106,38 @@ const AudioRecorder: React.FC<AudioRecorderProps> = ({ selectedEmail, onDraftSav
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
   const [editMode, setEditMode] = useState(false);
+  
+  // Action mode state
+  const [selectedAction, setSelectedAction] = useState<EmailActionType>(initialAction || 'ai-draft');
+  const [isPerformingAction, setIsPerformingAction] = useState(false);
+  
+  // Get templates from settings
+  const { settings } = useSettings();
+  
+  // Template selection state
+  const [selectedTemplateId, setSelectedTemplateId] = useState<string>('');
+  
+  // Update local state when initialAction changes from parent
+  useEffect(() => {
+    if (initialAction) {
+      setSelectedAction(initialAction);
+      
+      // Reset state when action changes
+      setAudioBlob(null);
+      setTranscription('');
+      setDraftReply('');
+      setEditMode(false);
+      setSelectedTemplateId('');
+      setSuccess(null);
+      setError(null);
+    }
+  }, [initialAction]);
+
+  useEffect(() => {
+    if (selectedAction !== 'quick-decline') {
+      setSelectedTemplateId('');
+    }
+  }, [selectedAction]);
 
   const startRecording = async () => {
     try {
@@ -112,291 +157,358 @@ const AudioRecorder: React.FC<AudioRecorderProps> = ({ selectedEmail, onDraftSav
       const mimeTypesToTry = isMobile ? MOBILE_PREFERRED_MIME_TYPES : SUPPORTED_MIME_TYPES;
       
       // Find the first supported MIME type
-      let mimeType = mimeTypesToTry.find(type => MediaRecorder.isTypeSupported(type));
-      
-      // Fall back to any supported type if none of the preferred types are supported
-      if (!mimeType) {
-        mimeType = SUPPORTED_MIME_TYPES.find(type => MediaRecorder.isTypeSupported(type));
+      let mimeType = '';
+      for (const type of mimeTypesToTry) {
+        if (MediaRecorder.isTypeSupported(type)) {
+          mimeType = type;
+          break;
+        }
       }
       
       if (!mimeType) {
-        throw new Error('No supported audio format found on this device');
+        console.warn('No supported MIME type found, using default');
+      } else {
+        console.log('Selected MIME type:', mimeType);
       }
-
-      console.log('Using audio format:', mimeType);
       
-      const options: MediaRecorderOptions = {
+      // Initialize with reasonable defaults for mobile
+      const options = {
         mimeType,
-        audioBitsPerSecond: 128000 // 128 kbps
+        audioBitsPerSecond: 128000
       };
       
-      mediaRecorderRef.current = new MediaRecorder(stream, options);
       audioChunksRef.current = [];
-
-      // Request data more frequently on mobile to ensure we capture everything
-      const timeslice = isMobile ? 1000 : 10000; // 1 second chunks on mobile, 10 seconds on desktop
-
-      mediaRecorderRef.current.ondataavailable = (event) => {
-        if (event.data && event.data.size > 0) {
-          console.log(`Received audio chunk: ${event.data.size} bytes`);
+      const mediaRecorder = new MediaRecorder(stream, options);
+      
+      mediaRecorderRef.current = mediaRecorder;
+      
+      // Set a shorter timeslice for mobile devices to improve quality
+      const timeslice = isMobile ? 1000 : 10000; // 1 second for mobile, 10 seconds for desktop
+      
+      mediaRecorder.start(timeslice);
+      setIsRecording(true);
+      
+      mediaRecorder.ondataavailable = (event) => {
+        if (event.data.size > 0) {
           audioChunksRef.current.push(event.data);
         }
       };
-
-      mediaRecorderRef.current.onstop = () => {
-        // Create blob with the correct mime type
-        const audioBlob = new Blob(audioChunksRef.current, { type: mimeType });
-        console.log('Recording stopped. Blob type:', audioBlob.type, 'size:', audioBlob.size);
-        
-        if (audioBlob.size === 0) {
-          setError('No audio data was captured. Please try again with a different browser or device.');
-          return;
-        }
-        
+      
+      mediaRecorder.onstop = () => {
+        const audioBlob = new Blob(audioChunksRef.current, { type: mimeType || 'audio/webm' });
         setAudioBlob(audioBlob);
+        setIsRecording(false);
+        
+        // Stop all audio tracks
+        stream.getAudioTracks().forEach(track => track.stop());
+        
         processAudioToText(audioBlob);
       };
-
-      // Start recording with timeslice to get data more frequently
-      mediaRecorderRef.current.start(timeslice);
-      setIsRecording(true);
-    } catch (err) {
-      console.error('Error starting recording:', err);
-      setError(`Failed to access microphone: ${err instanceof Error ? err.message : 'Unknown error'}. Please check permissions and try again.`);
+    } catch (error: any) {
+      console.error('Error starting recording:', error);
+      setError(`Error starting recording: ${error.message || 'Unknown error'}`);
     }
   };
 
   const stopRecording = () => {
     if (mediaRecorderRef.current && isRecording) {
-      mediaRecorderRef.current.stop();
-      setIsRecording(false);
-      
-      // Stop all tracks in the stream
-      if (mediaRecorderRef.current.stream) {
-        mediaRecorderRef.current.stream.getTracks().forEach(track => track.stop());
+      try {
+        mediaRecorderRef.current.stop();
+      } catch (error: any) {
+        console.error('Error stopping recording:', error);
+        setError(`Error stopping recording: ${error.message || 'Unknown error'}`);
       }
     }
   };
-
+  
   const processAudioToText = async (audioBlob: Blob) => {
-    setProcessingAudio(true);
-    setError(null);
-    
     try {
-      console.log(`Processing audio for transcription: ${audioBlob.size} bytes, type: ${audioBlob.type}`);
-      
-      // Check if the audio blob is valid
-      if (audioBlob.size < 1000) { // Less than 1KB is probably too small
-        throw new Error('Audio recording is too short or empty');
-      }
+      setProcessingAudio(true);
+      setError(null);
       
       const text = await transcribeSpeech(audioBlob);
-      console.log('Transcription successful:', text);
       setTranscription(text);
       
-      // Once we have transcription, generate a draft reply
-      await generateReply(text);
-    } catch (err) {
-      console.error('Error processing audio:', err);
-      const errorMessage = err instanceof Error ? err.message : 'Unknown error';
-      setError(`Failed to transcribe audio: ${errorMessage}. Please try again.`);
-    } finally {
+      // Process the transcription based on the selected action type
+      processTranscription(text);
+    } catch (error: any) {
+      console.error('Error processing audio:', error);
+      setError(`Error processing audio: ${error.message || 'Unknown error'}`);
       setProcessingAudio(false);
     }
   };
-
-  const generateReply = async (transcribedText: string) => {
-    setGeneratingDraft(true);
-    setError(null);
-    
-    try {
-      const params: DraftGenerationParams = {
-        transcribedText,
-        emailSubject: selectedEmail?.subject || '',
-        emailBody: selectedEmail?.body || '',
-        senderName: selectedEmail?.from.name || selectedEmail?.from.email || ''
-      };
-      
-      const draft = await generateDraftResponse(params);
-      setDraftReply(draft);
-      setEditMode(true);
-    } catch (err) {
-      console.error('Error generating draft:', err);
-      setError('Failed to generate draft reply. Please try again.');
-    } finally {
-      setGeneratingDraft(false);
+  
+  const processTranscription = (text: string) => {
+    if (selectedAction === 'ai-draft') {
+      // Continue with AI draft generation
+      generateReply(text);
+    } else if (selectedAction === 'speech-to-text') {
+      // Just use the raw transcription as the draft
+      setDraftReply(text);
+      setProcessingAudio(false);
+    } else if (selectedAction === 'quick-decline' && selectedTemplateId) {
+      // Use the selected template
+      const template = settings.templates.find(t => t.id === selectedTemplateId);
+      if (template) {
+        // Apply signature to template content
+        const contentWithSignature = template.content.replace('{signature}', settings.signature);
+        setDraftReply(contentWithSignature);
+      } else {
+        setError('Selected template not found');
+      }
+      setProcessingAudio(false);
+    } else if (selectedAction === 'move-to-read' || selectedAction === 'archive') {
+      // These actions don't need a draft, just perform them directly
+      performAction();
     }
   };
-
-  const handleSaveDraft = async () => {
-    setSavingDraft(true);
-    setError(null);
-    setSuccess(null);
-
+  
+  const generateReply = async (transcribedText: string) => {
     try {
-      // Validate we have the necessary data
-      if (!selectedEmail?.from?.email) {
-        throw new Error('No recipient email address found');
+      if (stableEmail) {
+        setGeneratingDraft(true);
+        
+        // Execute the AI draft action
+        const result = await executeAction({
+          type: 'ai-draft',
+          email: stableEmail,
+          transcription: transcribedText
+        });
+        
+        if (result.success && result.data?.draft) {
+          setDraftReply(result.data.draft);
+        } else {
+          setError(`Error generating reply: ${result.message}`);
+        }
+        
+        setGeneratingDraft(false);
+        setProcessingAudio(false);
       }
-      if (!selectedEmail?.subject) {
-        throw new Error('No subject found');
+    } catch (error: any) {
+      console.error('Error generating reply:', error);
+      setError(`Error generating reply: ${error.message || 'Unknown error'}`);
+      setGeneratingDraft(false);
+      setProcessingAudio(false);
+    }
+  };
+  
+  const handleSaveDraft = async () => {
+    if (!stableEmail || !draftReply) return;
+    
+    try {
+      setSavingDraft(true);
+      setError(null);
+      
+      // Execute the appropriate action based on the selected action type
+      const result = await performAction();
+      
+      if (result && result.success) {
+        setSuccess(result.message || getSuccessMessage(selectedAction));
+        // Reset email draft after successful save
+        if (onDraftSaved) onDraftSaved();
+        if (onActionComplete) onActionComplete();
+        setTimeout(() => {
+          // Reset component state
+          setAudioBlob(null);
+          setTranscription('');
+          setDraftReply('');
+          setSuccess(null);
+        }, 2000);
+      } else if (result) {
+        setError(result.message || 'Failed to save draft');
       }
-      if (!draftReply) {
-        throw new Error('Draft reply is empty');
-      }
-
-      // Log the original email format
-      console.log('Original from email:', selectedEmail.from.email);
-      
-      // Extract just the email address part
-      let recipientEmail = selectedEmail.from.email;
-      
-      // First try to extract email from angle brackets format
-      const emailMatch = recipientEmail.match(/<([^>]+)>/)?.[1];
-      if (emailMatch) {
-        recipientEmail = emailMatch;
-      } else {
-        // If no angle brackets, take the last part after space (assuming "Name email@domain.com" format)
-        const parts = recipientEmail.split(' ');
-        recipientEmail = parts[parts.length - 1];
-      }
-      
-      // Clean up any remaining brackets and trim
-      recipientEmail = recipientEmail.replace(/[<>]/g, '').trim();
-      
-      console.log('Extracted email:', recipientEmail);
-      
-      // Create draft email object
-      const draft = {
-        to: recipientEmail,
-        subject: `Re: ${selectedEmail.subject}`,
-        body: draftReply
-      };
-
-      console.log('Creating draft with:', draft); // Debug log
-
-      // Save draft using Gmail API
-      const draftId = await createDraft(draft);
-      console.log('Draft saved with ID:', draftId);
-      
-      setSuccess('Draft saved successfully in Gmail!');
-      if (onDraftSaved) {
-        onDraftSaved();
-      }
-
-      // Clear the form
-      setTranscription('');
-      setDraftReply('');
-      setAudioBlob(null);
-      setEditMode(false);
-    } catch (err: any) {
-      console.error('Error saving draft:', {
-        error: err,
-        message: err.message,
-        details: err.result?.error?.message
-      });
-      setError(
-        err.message || 
-        err.result?.error?.message || 
-        'Failed to save draft in Gmail. Please try again.'
-      );
+    } catch (error: any) {
+      console.error('Error saving draft:', error);
+      setError(`Error saving draft: ${error.message || 'Unknown error'}`);
     } finally {
       setSavingDraft(false);
     }
   };
-
-  const handleSendEmail = async () => {
+  
+  const performAction = async () => {
+    if (!stableEmail) return { success: false, message: 'No email selected' };
+    
+    setIsPerformingAction(true);
+    setError(null);
+    
     try {
-      const messageId = await sendEmail({
-        to: selectedEmail?.from.email || '',
-        subject: `Re: ${selectedEmail?.subject || ''}`,
-        body: draftReply
-      });
-      console.log('Email sent with ID:', messageId);
-      if (onDraftSaved) onDraftSaved(); // Refresh the email list
-      // Clear the transcription and draft
-      setTranscription('');
-      setDraftReply('');
-    } catch (error) {
-      console.error('Error sending email:', error);
+      let result;
+      
+      switch (selectedAction) {
+        case 'speech-to-text':
+          result = await executeAction({
+            type: 'speech-to-text',
+            email: stableEmail,
+            transcription: draftReply || transcription
+          });
+          break;
+          
+        case 'ai-draft':
+          // For AI draft, we've already generated the content
+          result = await executeAction({
+            type: 'speech-to-text', // Just save the draft, AI processing already done
+            email: stableEmail,
+            transcription: draftReply
+          });
+          break;
+          
+        case 'quick-decline':
+          if (selectedTemplateId) {
+            // Get the template
+            const template = settings.templates.find(t => t.id === selectedTemplateId);
+            if (template) {
+              // Apply signature to template content
+              const contentWithSignature = template.content.replace('{signature}', settings.signature);
+              
+              // Send with template
+              result = await executeAction({
+                type: 'quick-decline',
+                email: stableEmail,
+                template: {
+                  id: template.id,
+                  name: template.name,
+                  body: contentWithSignature,
+                  subject: `Re: ${stableEmail.subject}`,
+                  type: 'decline'
+                }
+              });
+            }
+          } else {
+            setError('No template selected');
+            setIsPerformingAction(false);
+            return { success: false, message: 'No template selected' };
+          }
+          break;
+          
+        case 'move-to-read':
+          result = await executeAction({
+            type: 'move-to-read',
+            email: stableEmail
+          });
+          break;
+          
+        case 'archive':
+          result = await executeAction({
+            type: 'archive',
+            email: stableEmail
+          });
+          break;
+          
+        default:
+          const errorMsg = `Unknown action type: ${selectedAction}`;
+          setError(errorMsg);
+          setIsPerformingAction(false);
+          return { success: false, message: errorMsg };
+      }
+      
+      // Set success message if operation succeeded
+      if (result && result.success) {
+        // Don't set success here, let the caller handle it
+        return {
+          success: true,
+          message: result.message || getSuccessMessage(selectedAction)
+        };
+      } else {
+        const errorMsg = result?.message || 'Unknown error occurred';
+        setError(errorMsg);
+        return { success: false, message: errorMsg };
+      }
+    } catch (error: any) {
+      const errorMsg = `Error performing action: ${error.message || 'Unknown error'}`;
+      console.error(errorMsg, error);
+      setError(errorMsg);
+      return { success: false, message: errorMsg };
+    } finally {
+      setIsPerformingAction(false);
+      setSavingDraft(false);
+      setProcessingAudio(false);
+    }
+  };
+  
+  const getSuccessMessage = (action: EmailActionType): string => {
+    switch (action) {
+      case 'speech-to-text':
+        return 'Draft saved successfully!';
+      case 'ai-draft':
+        return 'AI-generated draft saved successfully!';
+      case 'quick-decline':
+        return 'Decline email drafted successfully!';
+      case 'move-to-read':
+        return 'Email moved to To Read folder!';
+      case 'archive':
+        return 'Email archived successfully!';
+      default:
+        return 'Action completed successfully!';
+    }
+  };
+  
+  const getActionButtonText = (): string => {
+    switch (selectedAction) {
+      case 'speech-to-text':
+      case 'ai-draft':
+        return savingDraft ? 'Saving...' : 'Save as Draft';
+      case 'quick-decline':
+        return savingDraft ? 'Saving...' : 'Save Decline Draft';
+      case 'move-to-read':
+        return isPerformingAction ? 'Moving...' : 'Move to Read';
+      case 'archive':
+        return isPerformingAction ? 'Archiving...' : 'Archive Email';
+      default:
+        return 'Save';
     }
   };
 
-  const theme = useTheme();
-  // For debugging
-  // console.log('AudioRecorder render, selectedEmail:', selectedEmail?.id, 'stableEmail:', stableEmail?.id);
+  const handleTemplateSelect = (templateId: string) => {
+    const template = settings.templates.find(t => t.id === templateId);
+    if (!template) return;
+    
+    // Apply signature to template content
+    const contentWithSignature = template.content.replace('{signature}', settings.signature);
+    
+    setSelectedTemplateId(templateId);
+    setDraftReply(contentWithSignature);
+  };
   
-  // Use stableEmail to prevent flickering
-  const emailToUse = stableEmail || selectedEmail;
+  const handleSendEmail = async () => {
+    if (!stableEmail || !draftReply) return;
 
-  // If we don't have a stable or selected email, show the empty state
-  if (!emailToUse) {
-    return (
-      <Box sx={{ 
-        display: 'flex', 
-        flexDirection: 'column', 
-        alignItems: 'center', 
-        justifyContent: 'center',
-        minHeight: '300px',
-        width: '100%',
-        textAlign: 'center'
-      }}>
-        <Box 
-          sx={{ 
-            width: { xs: 70, sm: 90 }, 
-            height: { xs: 70, sm: 90 }, 
-            borderRadius: '50%',
-            backgroundColor: theme => theme.palette.mode === 'dark' ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.05)',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            mb: 2
-          }}
-        >
-          <MicIcon sx={{ fontSize: { xs: 32, sm: 40 }, color: 'text.secondary', opacity: 0.7 }} />
-        </Box>
-        <Typography variant="h6" sx={{ mb: 1 }}>
-          Select an Email to Reply
-        </Typography>
-        <Typography variant="body2" color="text.secondary" sx={{ maxWidth: 400 }}>
-          Choose an email from the list to start recording your audio response.
-        </Typography>
-      </Box>
-    );
-  }
+    try {
+      setIsPerformingAction(true);
+      
+      // Create draft email object
+      const draft = {
+        to: stableEmail.from.email,
+        subject: `Re: ${stableEmail.subject}`,
+        body: draftReply
+      };
+      
+      // Send the email
+      const messageId = await sendEmail(draft);
+      
+      if (messageId) {
+        setSuccess('Email sent successfully!');
+        // Notify parent component that action is complete
+        if (onActionComplete) onActionComplete();
+        // Clear the form after successful sending
+        setTimeout(() => {
+          setAudioBlob(null);
+          setTranscription('');
+          setDraftReply('');
+          setSuccess(null);
+        }, 2000);
+      } else {
+        setError('Failed to send email.');
+      }
+    } catch (error: any) {
+      console.error('Error sending email:', error);
+      setError(`Error sending email: ${error.message || 'Unknown error'}`);
+    } finally {
+      setIsPerformingAction(false);
+    }
+  };
 
   return (
-    <Box>
-      {/* Email Subject Header */}
-      <Box 
-        sx={{
-          mb: 3,
-          display: 'flex',
-          flexDirection: 'column',
-          gap: 0.5
-        }}
-      >
-        <Typography 
-          variant="subtitle2" 
-          color="text.secondary"
-          sx={{ fontWeight: 500 }}
-        >
-          Replying to:
-        </Typography>
-        <Typography 
-          variant="h6" 
-          sx={{ 
-            fontWeight: 600,
-            lineHeight: 1.3
-          }}
-        >
-          {emailToUse?.subject || "Email Subject"}
-        </Typography>
-        <Typography variant="body2" color="text.secondary">
-          From: {emailToUse?.from?.name || emailToUse?.from?.email || "Sender"}
-        </Typography>
-      </Box>
-      
+    <Box sx={{ width: '100%' }}>
       {/* Status Messages */}
       {error && (
         <Alert 
@@ -410,7 +522,7 @@ const AudioRecorder: React.FC<AudioRecorderProps> = ({ selectedEmail, onDraftSav
           {error}
         </Alert>
       )}
-
+      
       {success && (
         <Alert 
           severity="success" 
@@ -429,7 +541,6 @@ const AudioRecorder: React.FC<AudioRecorderProps> = ({ selectedEmail, onDraftSav
         elevation={0}
         sx={{ 
           p: { xs: spacing.xs, sm: spacing.sm }, 
-          mt: spacing.sm, 
           borderRadius: '12px',
           border: '1px solid',
           borderColor: 'divider',
@@ -443,64 +554,142 @@ const AudioRecorder: React.FC<AudioRecorderProps> = ({ selectedEmail, onDraftSav
           overflow: 'visible'
         }}
       >
-        {/* Record Your Response UI */}
-        {!isRecording && !processingAudio && !audioBlob && !transcription && (
-          <Box sx={{ textAlign: 'center', mb: 2, width: '100%' }}>
-            <Typography variant="h6" gutterBottom>
-              Record Your Response
-            </Typography>
-            <Typography variant="body2" color="text.secondary" sx={{ mb: 2, maxWidth: 400, mx: 'auto' }}>
-              Click the microphone button below to start recording your response. Speak clearly for best results.
-            </Typography>
-            <Button
-              variant="contained"
-              color="primary"
-              startIcon={<MicIcon />}
-              onClick={startRecording}
-              disabled={isRecording || processingAudio || generatingDraft}
-              sx={{ 
-                borderRadius: '8px', 
-                px: 3,
-                py: 1.5,
-                boxShadow: 2,
-                mt: 2,
-                minWidth: { xs: '180px', sm: '200px' }
-              }}
-            >
-              Start Recording
-            </Button>
+        {/* Action-specific UI */}
+        {!isRecording && !processingAudio && !audioBlob && !transcription && selectedAction && (
+          <Box 
+            sx={{ 
+              display: 'flex', 
+              justifyContent: 'center', 
+              alignItems: 'center',
+              p: 4,
+              flexGrow: 1,
+              minHeight: '200px',
+              position: 'relative'
+            }}
+          >
+            {(selectedAction === 'speech-to-text' || selectedAction === 'ai-draft') && (
+              <>
+                <IconButton
+                  onClick={startRecording}
+                  size="large"
+                  sx={{
+                    width: 80,
+                    height: 80,
+                    bgcolor: theme.palette.primary.main,
+                    color: 'white',
+                    '&:hover': {
+                      bgcolor: theme.palette.primary.dark,
+                    },
+                    boxShadow: 3,
+                    transition: 'all 0.2s ease'
+                  }}
+                >
+                  <MicIcon sx={{ fontSize: 32 }} />
+                </IconButton>
+                <Typography 
+                  variant="body2" 
+                  sx={{ position: 'absolute', bottom: 20, color: 'text.secondary' }}
+                >
+                  Click to start recording
+                </Typography>
+              </>
+            )}
+            
+            {/* Quick decline action */}
+            {selectedAction === 'quick-decline' && (
+              <Box sx={{ p: 2 }}>
+                <Typography variant="h6" sx={{ mb: 2 }}>Select Template</Typography>
+                <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+                  Choose a template to use for your email
+                </Typography>
+                
+                <FormControl fullWidth sx={{ mb: 2 }}>
+                  <InputLabel>Template</InputLabel>
+                  <Select
+                    value={selectedTemplateId}
+                    onChange={(e: SelectChangeEvent<string>) => {
+                      const templateId = e.target.value;
+                      if (templateId) {
+                        handleTemplateSelect(templateId);
+                      }
+                    }}
+                    label="Template"
+                  >
+                    {settings.templates
+                      .filter(template => template.type === 'decline')
+                      .map(template => (
+                        <MenuItem key={template.id} value={template.id}>
+                          {template.name}
+                        </MenuItem>
+                      ))}
+                  </Select>
+                </FormControl>
+              </Box>
+            )}
+            
+            {/* Move to read action */}
+            {selectedAction === 'move-to-read' && (
+              <Button
+                variant="contained"
+                color="primary"
+                onClick={performAction}
+                disabled={isPerformingAction || !stableEmail}
+                startIcon={<MicIcon />}
+                sx={{
+                  ...primaryButtonStyles,
+                  height: 48
+                }}
+              >
+                {isPerformingAction ? 'Moving...' : 'Move Email to Read Later'}
+              </Button>
+            )}
+            
+            {/* Archive action */}
+            {selectedAction === 'archive' && (
+              <Button
+                variant="contained"
+                color="primary"
+                onClick={performAction}
+                disabled={isPerformingAction || !stableEmail}
+                startIcon={<ArchiveIcon />}
+                sx={{
+                  ...primaryButtonStyles,
+                  height: 48
+                }}
+              >
+                {isPerformingAction ? 'Archiving...' : 'Archive Email'}
+              </Button>
+            )}
           </Box>
         )}
         
-        {/* Recording in progress UI */}
+        {/* Recording in progress */}
         {isRecording && (
           <Box 
             sx={{ 
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
+              display: 'flex', 
               flexDirection: 'column',
-              width: '100%',
-              my: 2
+              alignItems: 'center', 
+              justifyContent: 'center', 
+              py: 3
             }}
           >
-            <Box 
-              sx={{ 
-                width: { xs: 70, sm: 80 }, 
-                height: { xs: 70, sm: 80 }, 
+            <Box
+              sx={{
+                width: 80,
+                height: 80,
                 borderRadius: '50%',
-                backgroundColor: 'error.main',
+                bgcolor: 'error.main',
                 display: 'flex',
                 alignItems: 'center',
                 justifyContent: 'center',
-                boxShadow: '0 0 0 rgba(244, 67, 54, 0.4)',
                 animation: 'pulse 1.5s infinite',
                 '@keyframes pulse': {
                   '0%': {
-                    boxShadow: '0 0 0 0 rgba(244, 67, 54, 0.4)'
+                    boxShadow: '0 0 0 0 rgba(244, 67, 54, 0.7)'
                   },
                   '70%': {
-                    boxShadow: '0 0 0 20px rgba(244, 67, 54, 0)'
+                    boxShadow: '0 0 0 10px rgba(244, 67, 54, 0)'
                   },
                   '100%': {
                     boxShadow: '0 0 0 0 rgba(244, 67, 54, 0)'
@@ -589,36 +778,27 @@ const AudioRecorder: React.FC<AudioRecorderProps> = ({ selectedEmail, onDraftSav
           <Box sx={{ 
             display: 'flex', 
             justifyContent: 'space-between', 
-            alignItems: 'center', 
-            mb: 2 
+            alignItems: 'center',
+            mb: 2
           }}>
-            <Typography variant="subtitle1" sx={{ fontWeight: 600, color: 'text.primary' }}>
-              AI-Generated Draft
-            </Typography>
             <Box>
-              <Tooltip title={editMode ? "Editing mode active" : "Edit draft"}>
+              <Tooltip title="Edit draft">
                 <IconButton 
                   size="small" 
                   onClick={() => setEditMode(!editMode)}
-                  color={editMode ? "primary" : "default"}
-                  sx={{ 
-                    border: editMode ? '1px solid' : 'none',
-                    borderColor: editMode ? 'primary.main' : 'transparent',
-                    mr: 1
-                  }}
+                  sx={{ mr: 1 }}
                 >
                   <EditIcon fontSize="small" />
                 </IconButton>
               </Tooltip>
               <Tooltip title="Copy to clipboard">
                 <IconButton 
-                  size="small" 
+                  size="small"
                   onClick={() => {
                     navigator.clipboard.writeText(draftReply);
                     // Show a temporary success message
-                    const tempSuccess = setSuccess;
-                    tempSuccess("Copied to clipboard!");
-                    setTimeout(() => tempSuccess(null), 2000);
+                    setSuccess("Copied to clipboard!");
+                    setTimeout(() => setSuccess(null), 2000);
                   }}
                 >
                   <ContentCopyIcon fontSize="small" />
@@ -647,7 +827,7 @@ const AudioRecorder: React.FC<AudioRecorderProps> = ({ selectedEmail, onDraftSav
               multiline
               rows={8}
               value={draftReply}
-              onChange={(e) => setDraftReply(e.target.value)}
+              onChange={(e: React.ChangeEvent<HTMLTextAreaElement>) => setDraftReply(e.target.value)}
               variant="outlined"
               placeholder="Your AI-generated draft will appear here"
               sx={{ 
@@ -681,7 +861,7 @@ const AudioRecorder: React.FC<AudioRecorderProps> = ({ selectedEmail, onDraftSav
             </Box>
           )}
 
-          {draftReply && !generatingDraft && (
+          {((draftReply && !generatingDraft) || selectedAction === 'move-to-read' || selectedAction === 'archive') && (
             <Box sx={{ 
               display: 'flex', 
               gap: spacing.sm,
@@ -694,30 +874,38 @@ const AudioRecorder: React.FC<AudioRecorderProps> = ({ selectedEmail, onDraftSav
               <Button
                 variant="contained"
                 color="primary"
-                startIcon={<SendIcon />}
+                startIcon={selectedAction === 'archive' ? <ArchiveIcon /> : <SendIcon />}
                 onClick={handleSaveDraft}
-                disabled={savingDraft || !draftReply}
+                disabled={
+                  isPerformingAction || 
+                  savingDraft || 
+                  (selectedAction !== 'move-to-read' && selectedAction !== 'archive' && !draftReply)
+                }
                 sx={{ 
                   ...primaryButtonStyles,
                   boxShadow: 2,
                   height: 48
                 }}
               >
-                {savingDraft ? 'Saving...' : 'Save as Draft'}
+                {getActionButtonText()}
               </Button>
-              <Button
-                variant="contained"
-                color="primary"
-                onClick={handleSendEmail}
-                disabled={!draftReply || processingAudio}
-                startIcon={<SendIcon />}
-                sx={{
-                  ...primaryButtonStyles,
-                  height: 48
-                }}
-              >
-                Send Email
-              </Button>
+              
+              {/* Only show send button for draft actions */}
+              {(selectedAction === 'speech-to-text' || selectedAction === 'ai-draft' || selectedAction === 'quick-decline') && (
+                <Button
+                  variant="contained"
+                  color="primary"
+                  onClick={handleSendEmail}
+                  disabled={!draftReply || processingAudio || isPerformingAction}
+                  startIcon={<SendIcon />}
+                  sx={{
+                    ...primaryButtonStyles,
+                    height: 48
+                  }}
+                >
+                  Send Email
+                </Button>
+              )}
             </Box>
           )}
         </Paper>
@@ -726,4 +914,4 @@ const AudioRecorder: React.FC<AudioRecorderProps> = ({ selectedEmail, onDraftSav
   );
 };
 
-export default AudioRecorder; 
+export default AudioRecorder;
