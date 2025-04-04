@@ -4,308 +4,187 @@ import {
   Box, 
   Button, 
   Typography, 
-  Paper, 
   useMediaQuery, 
   useTheme, 
   Container,
-  Grid,
-  Card,
-  CardContent,
-  CardMedia,
-  Stack
+  Grid
 } from '@mui/material';
 import MicIcon from '@mui/icons-material/Mic';
 import EmailIcon from '@mui/icons-material/Email';
-import AutoAwesomeIcon from '@mui/icons-material/AutoAwesome';
-import SecurityIcon from '@mui/icons-material/Security';
-import SpeedIcon from '@mui/icons-material/Speed';
-import AccessTimeIcon from '@mui/icons-material/AccessTime';
 
 const LandingPage: React.FC = () => {
   const navigate = useNavigate();
   const theme = useTheme();
   const isMobile = useMediaQuery(theme.breakpoints.down('sm'));
-  const isMedium = useMediaQuery(theme.breakpoints.down('md'));
 
   const handleGetStarted = () => {
     navigate('/login');
   };
 
-  const features = [
-    {
-      icon: <MicIcon fontSize="large" color="primary" />,
-      title: "Voice-to-Email",
-      description: "Record your thoughts and have them instantly transcribed into professional email drafts."
-    },
-    {
-      icon: <AutoAwesomeIcon fontSize="large" color="primary" />,
-      title: "AI-Powered Drafts",
-      description: "Let our AI generate contextually relevant responses based on your voice recordings."
-    },
-    {
-      icon: <SecurityIcon fontSize="large" color="primary" />,
-      title: "Secure Gmail Integration",
-      description: "Connect securely to your Gmail account with OAuth authentication."
-    },
-    {
-      icon: <SpeedIcon fontSize="large" color="primary" />,
-      title: "Instant Responses",
-      description: "Create and send email responses in seconds, not minutes."
-    },
-    {
-      icon: <AccessTimeIcon fontSize="large" color="primary" />,
-      title: "Save Time",
-      description: "Respond to emails 3x faster than typing, perfect for busy professionals."
-    },
-    {
-      icon: <EmailIcon fontSize="large" color="primary" />,
-      title: "Email Management",
-      description: "Easily browse, respond to, and manage your Gmail inbox."
-    }
-  ];
-
   return (
     <Box sx={{ 
       minHeight: '100vh',
-      bgcolor: theme.palette.mode === 'dark' ? 'background.default' : '#f5f8fa'
+      bgcolor: theme.palette.mode === 'dark' ? '#182838' : '#e9f4ee'
     }}>
-      {/* Hero Section */}
-      <Box 
-        sx={{ 
-          background: theme.palette.mode === 'dark' 
-            ? 'linear-gradient(45deg, #1a237e 30%, #283593 90%)' 
-            : 'linear-gradient(45deg, #42a5f5 30%, #1976d2 90%)',
-          pt: { xs: 8, md: 12 },
-          pb: { xs: 10, md: 16 }
-        }}
-      >
-        <Container maxWidth="lg">
-          <Grid container spacing={4} alignItems="center">
-            <Grid item xs={12} md={6}>
-              <Box sx={{ p: { xs: 2, md: 4 } }}>
-                <Typography 
-                  variant={isMobile ? 'h4' : 'h2'} 
-                  component="h1" 
-                  fontWeight="bold"
-                  color="white"
-                  gutterBottom
-                >
-                  Audio Email Assistant
-                </Typography>
-                <Typography 
-                  variant={isMobile ? 'body1' : 'h6'} 
-                  color="white" 
-                  sx={{ mb: 4, opacity: 0.9 }}
-                >
-                  Respond to emails with your voice. Our AI-powered assistant transcribes your speech and generates professional email drafts in seconds.
-                </Typography>
-                <Button 
-                  variant="contained" 
-                  size="large" 
-                  onClick={handleGetStarted}
-                  sx={{ 
-                    bgcolor: 'white',
-                    color: 'primary.main',
-                    fontWeight: 'bold',
-                    px: 4,
-                    py: 1.5,
-                    fontSize: '1.1rem',
-                    '&:hover': {
-                      bgcolor: 'rgba(255, 255, 255, 0.9)',
-                    }
-                  }}
-                >
-                  Get Started
-                </Button>
-              </Box>
-            </Grid>
-            <Grid item xs={12} md={6} sx={{ display: { xs: 'none', md: 'block' } }}>
-              <Box 
-                component="img"
-                src="/logo.png"
-                alt="Audio Email Assistant"
-                sx={{ 
-                  width: '100%',
-                  maxWidth: 500,
-                  height: 'auto',
-                  display: 'block',
-                  mx: 'auto',
-                  filter: 'drop-shadow(0px 10px 20px rgba(0,0,0,0.2))'
-                }}
-              />
-            </Grid>
+      {/* Minimal header */}
+      <Box sx={{ py: 2, px: 4 }}>
+        <Grid container justifyContent="space-between" alignItems="center">
+          <Grid item>
+            <Box sx={{ display: 'flex', alignItems: 'center' }}>
+              <EmailIcon sx={{ mr: 1, color: theme.palette.mode === 'dark' ? '#fff' : '#000' }} />
+              <Typography variant="h6" component="h1" fontWeight="medium">
+                Audio Email Assistant
+              </Typography>
+            </Box>
           </Grid>
-        </Container>
+          <Grid item>
+            <Button 
+              variant="outlined" 
+              onClick={() => navigate('/login')}
+              size="small"
+              sx={{ 
+                mr: 2,
+                borderColor: theme.palette.mode === 'dark' ? 'rgba(255,255,255,0.5)' : 'rgba(0,0,0,0.2)',
+                color: theme.palette.mode === 'dark' ? '#fff' : '#000'
+              }}
+            >
+              Login
+            </Button>
+            <Button 
+              variant="contained" 
+              size="small" 
+              onClick={handleGetStarted}
+              sx={{ 
+                bgcolor: theme.palette.mode === 'dark' ? '#fff' : '#000',
+                color: theme.palette.mode === 'dark' ? '#000' : '#fff',
+                '&:hover': {
+                  bgcolor: theme.palette.mode === 'dark' ? 'rgba(255,255,255,0.9)' : 'rgba(0,0,0,0.8)',
+                }
+              }}
+            >
+              Get Started
+            </Button>
+          </Grid>
+        </Grid>
       </Box>
 
-      {/* Features Section */}
-      <Container maxWidth="lg" sx={{ py: { xs: 6, md: 10 } }}>
-        <Typography 
-          variant="h4" 
-          component="h2" 
-          textAlign="center" 
-          fontWeight="bold"
-          gutterBottom
-          sx={{ mb: 6 }}
-        >
-          Features
-        </Typography>
-        
-        <Grid container spacing={4}>
-          {features.map((feature, index) => (
-            <Grid item xs={12} sm={6} md={4} key={index}>
-              <Card 
-                elevation={1}
+      {/* Main hero section */}
+      <Container maxWidth="lg" sx={{ 
+        mt: { xs: 6, md: 10 },
+        mb: { xs: 10, md: 14 }
+      }}>
+        <Grid container spacing={8} alignItems="center">
+          <Grid item xs={12} md={6}>
+            <Box sx={{ maxWidth: 600 }}>
+              <Typography 
+                variant={isMobile ? 'h3' : 'h2'} 
+                component="h2" 
+                fontWeight="bold"
+                gutterBottom
+                sx={{ mb: 3 }}
+              >
+                Get started with Audio Email
+              </Typography>
+              <Typography 
+                variant="body1" 
+                color="text.secondary"
                 sx={{ 
-                  height: '100%',
-                  display: 'flex',
-                  flexDirection: 'column',
-                  borderRadius: 2,
-                  transition: 'transform 0.2s, box-shadow 0.2s',
+                  mb: 4, 
+                  fontSize: isMobile ? '1rem' : '1.25rem',
+                  lineHeight: 1.5 
+                }}
+              >
+                Securely record, transcribe, highlight, and share every email response.
+              </Typography>
+              <Button 
+                variant="contained" 
+                size="large" 
+                onClick={handleGetStarted}
+                sx={{ 
+                  px: 4,
+                  py: 1.5,
+                  fontSize: '1.1rem',
+                  bgcolor: theme.palette.primary.main,
                   '&:hover': {
-                    transform: 'translateY(-5px)',
-                    boxShadow: 4
+                    bgcolor: theme.palette.primary.dark,
                   }
                 }}
               >
-                <CardContent sx={{ flexGrow: 1, p: 3 }}>
-                  <Box sx={{ mb: 2 }}>
-                    {feature.icon}
-                  </Box>
-                  <Typography variant="h6" component="h3" gutterBottom fontWeight="bold">
-                    {feature.title}
-                  </Typography>
-                  <Typography variant="body2" color="text.secondary">
-                    {feature.description}
-                  </Typography>
-                </CardContent>
-              </Card>
-            </Grid>
-          ))}
-        </Grid>
-      </Container>
-
-      {/* How It Works Section */}
-      <Box sx={{ bgcolor: theme.palette.mode === 'dark' ? 'background.paper' : '#e8f0fe', py: { xs: 6, md: 10 } }}>
-        <Container maxWidth="lg">
-          <Typography 
-            variant="h4" 
-            component="h2" 
-            textAlign="center" 
-            fontWeight="bold"
-            gutterBottom
-            sx={{ mb: 6 }}
-          >
-            How It Works
-          </Typography>
-          
-          <Grid container spacing={4} alignItems="center">
-            <Grid item xs={12} md={6}>
-              <Stack spacing={4}>
-                <Paper elevation={0} sx={{ p: 3, borderRadius: 2, bgcolor: theme.palette.background.paper }}>
-                  <Typography variant="h6" fontWeight="bold" gutterBottom>
-                    1. Sign in with Gmail
-                  </Typography>
-                  <Typography variant="body1">
-                    Securely connect your Gmail account with OAuth authentication.
-                  </Typography>
-                </Paper>
-                
-                <Paper elevation={0} sx={{ p: 3, borderRadius: 2, bgcolor: theme.palette.background.paper }}>
-                  <Typography variant="h6" fontWeight="bold" gutterBottom>
-                    2. Select an email to respond to
-                  </Typography>
-                  <Typography variant="body1">
-                    Browse your inbox and choose the email you want to reply to.
-                  </Typography>
-                </Paper>
-                
-                <Paper elevation={0} sx={{ p: 3, borderRadius: 2, bgcolor: theme.palette.background.paper }}>
-                  <Typography variant="h6" fontWeight="bold" gutterBottom>
-                    3. Record your response
-                  </Typography>
-                  <Typography variant="body1">
-                    Use your voice to record your thoughts for the email response.
-                  </Typography>
-                </Paper>
-                
-                <Paper elevation={0} sx={{ p: 3, borderRadius: 2, bgcolor: theme.palette.background.paper }}>
-                  <Typography variant="h6" fontWeight="bold" gutterBottom>
-                    4. Review and send
-                  </Typography>
-                  <Typography variant="body1">
-                    Edit the AI-generated draft if needed, then save or send your email.
-                  </Typography>
-                </Paper>
-              </Stack>
-            </Grid>
-            
-            <Grid item xs={12} md={6} sx={{ display: { xs: 'none', md: 'flex' }, justifyContent: 'center' }}>
-              <Box 
-                component="img"
-                src="/logo.svg"
-                alt="How it works"
-                sx={{ 
-                  width: '100%',
-                  maxWidth: 400,
-                  height: 'auto'
-                }}
-              />
-            </Grid>
+                Get Audio Email - Free
+              </Button>
+            </Box>
           </Grid>
-        </Container>
-      </Box>
-
-      {/* CTA Section */}
-      <Container maxWidth="md" sx={{ py: { xs: 6, md: 10 } }}>
-        <Paper 
-          elevation={3} 
-          sx={{ 
-            p: { xs: 3, md: 5 }, 
-            borderRadius: 3,
-            textAlign: 'center',
-            background: theme.palette.mode === 'dark' 
-              ? 'linear-gradient(45deg, #283593 30%, #1a237e 90%)' 
-              : 'linear-gradient(45deg, #1976d2 30%, #42a5f5 90%)',
-          }}
-        >
-          <Typography 
-            variant={isMobile ? 'h5' : 'h4'} 
-            component="h2" 
-            fontWeight="bold"
-            color="white"
-            gutterBottom
-          >
-            Ready to save time on email responses?
-          </Typography>
           
-          <Typography 
-            variant="body1" 
-            color="white" 
-            sx={{ mb: 4, opacity: 0.9, maxWidth: 600, mx: 'auto' }}
-          >
-            Join thousands of professionals who use Audio Email Assistant to respond to emails faster and more efficiently.
-          </Typography>
-          
-          <Button 
-            variant="contained" 
-            size="large" 
-            onClick={handleGetStarted}
-            sx={{ 
-              bgcolor: 'white',
-              color: 'primary.main',
-              fontWeight: 'bold',
-              px: 4,
-              py: 1.5,
-              fontSize: '1.1rem',
-              '&:hover': {
-                bgcolor: 'rgba(255, 255, 255, 0.9)',
-              }
-            }}
-          >
-            Get Started Now
-          </Button>
-        </Paper>
+          <Grid item xs={12} md={6}>
+            <Box sx={{ 
+              position: 'relative',
+              height: '100%',
+              display: 'flex',
+              justifyContent: 'center'
+            }}>
+              {/* Screenshot/demo image */}
+              <Box 
+                sx={{ 
+                  position: 'absolute',
+                  top: { xs: '20px', md: '-30px' },
+                  right: { xs: '0px', md: '-50px' },
+                  width: { xs: '85%', md: '70%' },
+                  height: 'auto',
+                  borderRadius: '12px',
+                  overflow: 'hidden',
+                  boxShadow: '0px 4px 20px rgba(0, 0, 0, 0.1)',
+                  transform: 'rotate(2deg)',
+                  bgcolor: '#fff',
+                  p: 2
+                }}
+              >
+                <Typography variant="body2" fontWeight="bold" gutterBottom>Summary</Typography>
+                <Typography variant="body2" sx={{ fontSize: '0.9rem' }}>
+                  The recorded audio has been transcribed and converted into a professional email draft ready for sending.
+                </Typography>
+              </Box>
+              
+              {/* Recording UI element */}
+              <Box 
+                sx={{ 
+                  position: 'relative',
+                  width: { xs: '90%', md: '80%' },
+                  borderRadius: '12px',
+                  overflow: 'hidden',
+                  boxShadow: '0px 8px 30px rgba(0, 0, 0, 0.12)',
+                  height: '320px',
+                  display: 'flex',
+                  flexDirection: 'column',
+                  bgcolor: '#fff',
+                  p: 3
+                }}
+              >
+                <Box sx={{ display: 'flex', alignItems: 'center', mb: 2 }}>
+                  <MicIcon color="error" />
+                  <Typography variant="subtitle1" sx={{ ml: 1 }}>Recording audio...</Typography>
+                </Box>
+                <Box sx={{ 
+                  flex: 1, 
+                  borderRadius: '8px', 
+                  border: '1px dashed rgba(0,0,0,0.2)',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  p: 3
+                }}>
+                  <Typography align="center" variant="body2" color="text.secondary">
+                    "Thanks for your email. I've reviewed the proposal and have some thoughts..."
+                  </Typography>
+                </Box>
+                <Box sx={{ mt: 2, display: 'flex', justifyContent: 'flex-end' }}>
+                  <Button variant="contained" color="error" size="small">
+                    Stop Recording
+                  </Button>
+                </Box>
+              </Box>
+            </Box>
+          </Grid>
+        </Grid>
       </Container>
 
       {/* Footer */}
@@ -313,14 +192,24 @@ const LandingPage: React.FC = () => {
         component="footer" 
         sx={{ 
           py: 3, 
-          bgcolor: theme.palette.mode === 'dark' ? 'background.paper' : '#f5f5f5',
+          px: 4,
+          mt: 'auto',
           borderTop: `1px solid ${theme.palette.divider}`
         }}
       >
         <Container maxWidth="lg">
-          <Typography variant="body2" color="text.secondary" align="center">
-            © {new Date().getFullYear()} Audio Email Assistant. All rights reserved.
-          </Typography>
+          <Grid container justifyContent="space-between" alignItems="center">
+            <Grid item>
+              <Typography variant="body2" color="text.secondary">
+                © {new Date().getFullYear()} Audio Email Assistant
+              </Typography>
+            </Grid>
+            <Grid item>
+              <Typography variant="body2" color="text.secondary">
+                Secure. Private. Efficient.
+              </Typography>
+            </Grid>
+          </Grid>
         </Container>
       </Box>
     </Box>
