@@ -94,15 +94,22 @@ const HomePage: React.FC<HomePageProps> = () => {
     })
     .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
 
-  const handleEmailClick = async (email: Email) => {
-    if (selectedEmail?.id === email.id) {
-      setSelectedEmail(null);
-    } else {
-      const fullEmail = await getEmailById(email.id);
-      setEmails(prev => prev.map(e => e.id === fullEmail.id ? fullEmail : e));
-      setSelectedEmail(fullEmail);
+  // Use useCallback to prevent recreating this function on every render
+  const handleEmailClick = useCallback(async (email: Email) => {
+    try {
+      // Don't unselect an email when clicking it again
+      // This prevents the flickering effect
+      if (selectedEmail?.id !== email.id) { 
+        // Show loading state if needed
+        const fullEmail = await getEmailById(email.id);
+        setEmails(prev => prev.map(e => e.id === fullEmail.id ? fullEmail : e));
+        setSelectedEmail(fullEmail);
+      }
+    } catch (error) {
+      console.error('Error fetching email details:', error);
+      setError('Failed to load email details');
     }
-  };
+  }, [selectedEmail]);
 
   const handleArchive = async (emailId: string) => {
     try {
@@ -156,11 +163,13 @@ const HomePage: React.FC<HomePageProps> = () => {
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [filteredEmails, selectedEmailIndex]);
 
-  useEffect(() => {
-    if (selectedEmail) {
-      handleEmailClick(selectedEmail);
-    }
-  }, [selectedEmail, handleEmailClick]);
+  // This effect is not needed and creates a circular dependency
+  // We've removed it to prevent flickering
+  // useEffect(() => {
+  //  if (selectedEmail) {
+  //    handleEmailClick(selectedEmail);
+  //  }
+  // }, [selectedEmail, handleEmailClick]);
 
   useEffect(() => {
     if (filteredEmails && filteredEmails.length > selectedEmailIndex) {

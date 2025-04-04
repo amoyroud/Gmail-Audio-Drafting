@@ -5,7 +5,17 @@ const ELEVENLABS_API_URL = 'https://api.elevenlabs.io/v1';
 const ELEVENLABS_API_KEY = process.env.REACT_APP_ELEVENLABS_API_KEY;
 
 // Supported audio formats
-const SUPPORTED_AUDIO_FORMATS = ['audio/wav', 'audio/mpeg', 'audio/mp3', 'audio/webm'];
+const SUPPORTED_AUDIO_FORMATS = [
+  'audio/wav', 
+  'audio/mpeg', 
+  'audio/mp3', 
+  'audio/webm',
+  'audio/webm;codecs=opus',
+  'audio/webm;codecs=pcm',
+  'audio/mp4',
+  'audio/ogg',
+  'audio/ogg;codecs=opus'
+];
 
 interface TranscriptionResponse {
   text: string;
@@ -32,8 +42,13 @@ export const transcribeSpeech = async (audioBlob: Blob): Promise<string> => {
     throw new Error('ElevenLabs API key is not configured');
   }
 
-  // Validate audio format
-  if (!SUPPORTED_AUDIO_FORMATS.includes(audioBlob.type)) {
+  // Validate audio format - use a more flexible check for mobile compatibility
+  const baseType = audioBlob.type.split(';')[0]; // Get the base MIME type without codecs
+  const isSupported = SUPPORTED_AUDIO_FORMATS.some(format => 
+    audioBlob.type === format || format.startsWith(baseType)
+  );
+  
+  if (!isSupported) {
     console.error(`Unsupported audio format: ${audioBlob.type}`);
     console.error('Supported formats:', SUPPORTED_AUDIO_FORMATS.join(', '));
     throw new Error(`Unsupported audio format: ${audioBlob.type}. Please use one of: ${SUPPORTED_AUDIO_FORMATS.join(', ')}`);
@@ -46,7 +61,25 @@ export const transcribeSpeech = async (audioBlob: Blob): Promise<string> => {
 
     // Convert blob to FormData
     const formData = new FormData();
-    formData.append('file', audioBlob, `audio.${audioBlob.type.split('/')[1]}`);
+    
+    // Get file extension based on MIME type
+    let fileExtension = 'webm'; // Default extension
+    const mimeType = audioBlob.type.toLowerCase();
+    
+    if (mimeType.includes('wav')) {
+      fileExtension = 'wav';
+    } else if (mimeType.includes('mp3') || mimeType.includes('mpeg')) {
+      fileExtension = 'mp3';
+    } else if (mimeType.includes('mp4')) {
+      fileExtension = 'mp4';
+    } else if (mimeType.includes('ogg')) {
+      fileExtension = 'ogg';
+    }
+    
+    console.log(`Using file extension: ${fileExtension} for MIME type: ${mimeType}`);
+    
+    // Append file with proper extension
+    formData.append('file', audioBlob, `audio.${fileExtension}`);
     formData.append('model_id', 'scribe_v1');
 
     console.log('Making request to ElevenLabs API...');

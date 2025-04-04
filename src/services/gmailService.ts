@@ -49,7 +49,6 @@ declare global {
     google: any;
     gapi: any;
     googleAuthInitialized: boolean;
-    googleTokenClient: any;
     tokenClient: any;
   }
 }
@@ -57,6 +56,11 @@ declare global {
 // Track initialization status
 let isInitializing = false;
 let initPromise: Promise<void> | null = null;
+
+// Token storage keys
+const TOKEN_STORAGE_KEY = 'gmail_auth_token';
+const TOKEN_EXPIRY_KEY = 'gmail_auth_expiry';
+const USER_EMAIL_KEY = 'gmail_user_email';
 
 /**
  * Initialize the Gmail API client using Google Identity Services
@@ -84,8 +88,31 @@ export const initGmailClient = async (): Promise<void> => {
       // Load Google Identity Services
       await loadGisScript();
 
+      // Load GAPI first
+      await new Promise<void>((resolveGapi, rejectGapi) => {
+        const script = document.createElement('script');
+        script.src = 'https://apis.google.com/js/api.js';
+        script.async = true;
+        script.defer = true;
+        script.onload = () => {
+          window.gapi.load('client', async () => {
+            try {
+              await window.gapi.client.init({
+                apiKey: API_KEY,
+                discoveryDocs: ['https://www.googleapis.com/discovery/v1/apis/gmail/v1/rest']
+              });
+              resolveGapi();
+            } catch (error) {
+              rejectGapi(error);
+            }
+          });
+        };
+        script.onerror = () => rejectGapi(new Error('Failed to load GAPI script'));
+        document.head.appendChild(script);
+      });
+
       // Initialize the tokenClient
-      const tokenClient = window.google.accounts.oauth2.initTokenClient({
+      window.tokenClient = window.google.accounts.oauth2.initTokenClient({
         client_id: CLIENT_ID,
         scope: GMAIL_SCOPES.join(' '),
         callback: async (tokenResponse: any) => {
@@ -96,86 +123,50 @@ export const initGmailClient = async (): Promise<void> => {
           }
 
           try {
-            // Load Gmail API
-            await new Promise<void>((resolveGapi) => {
-              const script = document.createElement('script');
-              script.src = 'https://apis.google.com/js/api.js';
-              script.onload = () => {
-                window.gapi.load('client', async () => {
-                  try {
-                    await window.gapi.client.init({
-                      apiKey: API_KEY,
-                      discoveryDocs: ['https://www.googleapis.com/discovery/v1/apis/gmail/v1/rest']
-                    });
-                    
-                    // Set the token
-                    window.gapi.client.setToken({
-                      access_token: tokenResponse.access_token
-                    });
-                    
-                    // Store token and user info
-                    localStorage.setItem('gmail_auth_code', tokenResponse.access_token);
-                    window.googleAuthInitialized = true;
-                    
-                    // Get and store user email
-                    try {
-                      const profile = await window.gapi.client.gmail.users.getProfile({ userId: 'me' });
-                      localStorage.setItem('gmail_user_email', profile.result.emailAddress);
-                    } catch (e) {
-                      console.error('Error getting user profile:', e);
-                    }
-                    
-                    window.dispatchEvent(new Event('gmail_authenticated'));
-                    resolveGapi();
-                  } catch (error) {
-                    console.error('GAPI init error:', error);
-                    reject(error);
-                  }
-                });
-              };
-              script.onerror = () => reject(new Error('Failed to load GAPI'));
-              document.head.appendChild(script);
+            // Set the token
+            window.gapi.client.setToken({
+              access_token: tokenResponse.access_token
             });
-
+            
+            // Store token with expiration information
+            const expiresIn = tokenResponse.expires_in || 3600; // Default to 1 hour
+            const expiryTime = Date.now() + (expiresIn * 1000);
+            
+            localStorage.setItem(TOKEN_STORAGE_KEY, tokenResponse.access_token);
+            localStorage.setItem(TOKEN_EXPIRY_KEY, expiryTime.toString());
+            window.googleAuthInitialized = true;
+            
+            // Get and store user email
+            try {
+              const profile = await window.gapi.client.gmail.users.getProfile({ userId: 'me' });
+              if (profile?.result?.emailAddress) {
+                localStorage.setItem(USER_EMAIL_KEY, profile.result.emailAddress);
+              }
+            } catch (e) {
+              console.error('Error fetching user profile:', e);
+            }
+            
             resolve();
           } catch (error) {
-            console.error('Token callback error:', error);
             reject(error);
           }
         }
       });
 
-      // Store token client for later use
-      window.tokenClient = tokenClient;
-      window.googleTokenClient = tokenClient;
-      
-      // Check if we have a stored token
-      const storedToken = localStorage.getItem('gmail_auth_code');
-      if (storedToken) {
-        try {
-          window.gapi.client.setToken({ access_token: storedToken });
-          window.googleAuthInitialized = true;
-          window.dispatchEvent(new Event('gmail_authenticated'));
-          resolve();
-          return;
-        } catch (error) {
-          console.error('Error using stored token:', error);
-          localStorage.removeItem('gmail_auth_code');
-        }
-      }
-      
-      // If no stored token, request a new one
-      tokenClient.requestAccessToken({ prompt: 'consent' });
-
+      // Request an access token
+      window.tokenClient.requestAccessToken();
     } catch (error) {
       console.error('Error in initGmailClient:', error);
       reject(error);
-    } finally {
-      isInitializing = false;
     }
   });
-  
-  return initPromise;
+
+  try {
+    await initPromise;
+  } finally {
+    isInitializing = false;
+    initPromise = null;
+  }
 };
 
 /**
@@ -191,25 +182,38 @@ export const signIn = async (): Promise<void> => {
     }
 
     // Get token client
-    const tokenClient = window.googleTokenClient;
+    const tokenClient = window.tokenClient;
     if (!tokenClient) {
       throw new Error('Token client not initialized');
     }
 
     // Request token with redirect flow
     return new Promise<void>((resolve, reject) => {
-      // Check if we have a stored token
-      const storedToken = localStorage.getItem('gmail_auth_code');
-      if (storedToken) {
+      // Check if we have a stored token that's not expired
+      const storedToken = localStorage.getItem(TOKEN_STORAGE_KEY);
+      const tokenExpiry = localStorage.getItem(TOKEN_EXPIRY_KEY);
+      const now = Date.now();
+      
+      // Check if token exists and is not expired (with 5-minute buffer)
+      if (storedToken && tokenExpiry && parseInt(tokenExpiry) > now + 300000) {
         try {
           window.gapi.client.setToken({ access_token: storedToken });
+          window.googleAuthInitialized = true;
           window.dispatchEvent(new Event('gmail_authenticated'));
           resolve();
           return;
         } catch (error) {
           console.error('Error using stored token:', error);
-          localStorage.removeItem('gmail_auth_code');
+          // Clear invalid tokens
+          localStorage.removeItem(TOKEN_STORAGE_KEY);
+          localStorage.removeItem(TOKEN_EXPIRY_KEY);
+          localStorage.removeItem(USER_EMAIL_KEY);
         }
+      } else if (storedToken && tokenExpiry) {
+        console.log('Token expired, requesting new token');
+        // Clear expired tokens
+        localStorage.removeItem(TOKEN_STORAGE_KEY);
+        localStorage.removeItem(TOKEN_EXPIRY_KEY);
       }
 
       tokenClient.callback = async (response: any) => {
@@ -219,10 +223,26 @@ export const signIn = async (): Promise<void> => {
         }
 
         try {
-          // Store the token
+          // Store the token with expiration (default Google OAuth tokens last 1 hour)
           const token = response.access_token;
+          const expiresIn = response.expires_in || 3600; // Default to 1 hour if not specified
+          const expiryTime = Date.now() + (expiresIn * 1000);
+          
           window.gapi.client.setToken({ access_token: token });
-          localStorage.setItem('gmail_auth_code', token);
+          localStorage.setItem(TOKEN_STORAGE_KEY, token);
+          localStorage.setItem(TOKEN_EXPIRY_KEY, expiryTime.toString());
+          
+          // Get and store user email for future reference
+          try {
+            const profile = await window.gapi.client.gmail.users.getProfile({ userId: 'me' });
+            if (profile?.result?.emailAddress) {
+              localStorage.setItem(USER_EMAIL_KEY, profile.result.emailAddress);
+            }
+          } catch (e) {
+            console.error('Error fetching user profile:', e);
+          }
+          
+          window.googleAuthInitialized = true;
           window.dispatchEvent(new Event('gmail_authenticated'));
           resolve();
         } catch (error) {
@@ -230,8 +250,9 @@ export const signIn = async (): Promise<void> => {
         }
       };
 
-      // Request new token
-      tokenClient.requestAccessToken({ prompt: 'consent' });
+      // Request new token - don't prompt if we're just refreshing an expired token
+      const promptMode = storedToken ? undefined : 'consent';
+      tokenClient.requestAccessToken({ prompt: promptMode });
     });
   } catch (error) {
     console.error('Error signing in:', error);
@@ -267,31 +288,37 @@ export const archiveEmail = async (emailId: string): Promise<void> => {
  */
 export const signOut = async (): Promise<void> => {
   try {
-    // Clear token from gapi
-    if (window.gapi?.client?.getToken()) {
-      window.gapi.client.setToken('');
+    // Clear token from client
+    if (window.gapi?.client) {
+      window.gapi.client.setToken(null);
     }
-    
-    // Clear token from Google Identity Services
-    if (window.google?.accounts?.oauth2) {
-      window.google.accounts.oauth2.revoke(
-        localStorage.getItem('gmail_auth_code') || '',
-        () => console.log('Token revoked')
-      );
-    }
-    
-    // Clear all local storage items
-    localStorage.removeItem('gmail_auth_code');
-    localStorage.removeItem('gmail_access_token');
-    localStorage.removeItem('gmail_refresh_token');
-    
+
+    // Get token before clearing storage
+    const token = localStorage.getItem(TOKEN_STORAGE_KEY);
+
+    // Clear all auth data from localStorage
+    localStorage.removeItem(TOKEN_STORAGE_KEY);
+    localStorage.removeItem(TOKEN_EXPIRY_KEY);
+    localStorage.removeItem(USER_EMAIL_KEY);
+
     // Reset initialization flag
     window.googleAuthInitialized = false;
-    initPromise = null;
-    isInitializing = false;
-    
+
+    // Revoke token access if possible
+    if (window.google?.accounts?.oauth2 && token) {
+      try {
+        window.google.accounts.oauth2.revoke(token, () => {
+          console.log('Token revoked successfully');
+        });
+      } catch (revokeError) {
+        console.error('Error revoking token:', revokeError);
+        // Continue with sign out process even if revoke fails
+      }
+    }
+
+    // Notify about sign out
     window.dispatchEvent(new Event('gmail_signed_out'));
-    
+    console.log('Signed out successfully');
     // Redirect to Google logout page to ensure complete sign out
     window.location.href = 'https://accounts.google.com/logout';
   } catch (error) {
@@ -300,33 +327,52 @@ export const signOut = async (): Promise<void> => {
 };
 
 /**
- * Check if user is signed in
+ * Check if user is signed in with a valid token
  */
 export const isSignedIn = (): boolean => {
-  const token = localStorage.getItem('gmail_auth_code');
-  return !!token && window.googleAuthInitialized === true;
+  const token = localStorage.getItem(TOKEN_STORAGE_KEY);
+  const tokenExpiry = localStorage.getItem(TOKEN_EXPIRY_KEY);
+  const now = Date.now();
+  
+  // Token exists and is not expired
+  return !!token && !!tokenExpiry && parseInt(tokenExpiry) > now;
 };
 
 /**
  * Ensure authentication is valid and refresh if needed
  */
 const ensureAuthenticated = async (): Promise<void> => {
+  // Initialize client if needed
   if (!window.googleAuthInitialized) {
     await initGmailClient();
   }
 
-  const token = localStorage.getItem('gmail_auth_code');
-  if (!token) {
+  // Check if token exists and is not expired
+  const token = localStorage.getItem(TOKEN_STORAGE_KEY);
+  const tokenExpiry = localStorage.getItem(TOKEN_EXPIRY_KEY);
+  const now = Date.now();
+  
+  // If no token or token is expired (or about to expire in 5 minutes), sign in again
+  if (!token || !tokenExpiry || parseInt(tokenExpiry) < now + 300000) {
+    console.log('Token missing or expiring soon, refreshing authentication');
     await signIn();
     return;
   }
 
+  // Set the token in gapi client if it's not already set
+  if (!window.gapi.client.getToken()) {
+    window.gapi.client.setToken({ access_token: token });
+  }
+
   try {
-    // Try to make a test request
+    // Try to make a test request to verify token is still valid
     await window.gapi.client.gmail.users.getProfile({ userId: 'me' });
   } catch (error: any) {
-    if (error?.status === 401) {
-      // Token is invalid or expired, try to refresh
+    console.error('Token validation error:', error);
+    if (error?.status === 401 || error?.result?.error?.code === 401) {
+      // Token is invalid or expired, clear it and sign in again
+      localStorage.removeItem(TOKEN_STORAGE_KEY);
+      localStorage.removeItem(TOKEN_EXPIRY_KEY);
       await signIn();
     } else {
       throw error;

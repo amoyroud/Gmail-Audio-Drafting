@@ -6,7 +6,7 @@ export interface UserSettings {
 }
 
 const DEFAULT_SETTINGS: UserSettings = {
-  emailPromptTemplate: `You are an AI assistant helping to draft an email response.
+  emailPromptTemplate: `You are an AI assistant supporting a venture investor helping to draft an email response.
 
 Context:
 - Email subject: "{emailSubject}"
@@ -16,13 +16,13 @@ Context:
 
 Task: Write a professional and friendly email response that:
 1. Addresses the sender appropriately
-2. References the original email subject and content
+2. References the original email subject and content very succinctly
 3. Incorporates the key points from my transcribed voice notes
-4. Maintains a friendly tone
+4. Maintains a friendly tone that is short and to the point, not verbose
 5. Sign with {signature}
 
 Write the complete email response:`,
-  signature: 'Best regards'
+  signature: 'Antoine'
 };
 
 // Store settings in localStorage

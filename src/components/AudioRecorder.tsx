@@ -1,4 +1,4 @@
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import { useTheme } from '@mui/material/styles';
 import {
   Box,
@@ -26,9 +26,20 @@ import { Email, DraftGenerationParams } from '../types/types';
 // Supported audio formats for ElevenLabs API
 const SUPPORTED_MIME_TYPES = [
   'audio/webm',
+  'audio/webm;codecs=opus',
+  'audio/webm;codecs=pcm',
   'audio/mp4',
-  'audio/ogg;codecs=opus',
+  'audio/mpeg',
+  'audio/mp3',
   'audio/wav',
+  'audio/ogg',
+  'audio/ogg;codecs=opus'
+];
+
+// Default to these MIME types on mobile devices which often have limited support
+const MOBILE_PREFERRED_MIME_TYPES = [
+  'audio/mp4',
+  'audio/webm',
   'audio/mpeg'
 ];
 
@@ -60,6 +71,15 @@ const primaryButtonStyles = {
 };
 
 const AudioRecorder: React.FC<AudioRecorderProps> = ({ selectedEmail, onDraftSaved }) => {
+  // State to stabilize selectedEmail and prevent flickering
+  const [stableEmail, setStableEmail] = useState<Email | null>(null);
+  
+  // Once we have a selectedEmail, keep it stable to prevent flickering
+  useEffect(() => {
+    if (selectedEmail) {
+      setStableEmail(selectedEmail);
+    }
+  }, [selectedEmail]);
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const audioChunksRef = useRef<Blob[]>([]);
   
@@ -76,42 +96,73 @@ const AudioRecorder: React.FC<AudioRecorderProps> = ({ selectedEmail, onDraftSav
 
   const startRecording = async () => {
     try {
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      const stream = await navigator.mediaDevices.getUserMedia({ 
+        audio: {
+          echoCancellation: true,
+          noiseSuppression: true,
+          autoGainControl: true
+        } 
+      });
+      
+      // Detect if user is on mobile
+      const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
+      console.log('Device detected as:', isMobile ? 'mobile' : 'desktop');
+      
+      // Use different MIME type priorities based on device type
+      const mimeTypesToTry = isMobile ? MOBILE_PREFERRED_MIME_TYPES : SUPPORTED_MIME_TYPES;
       
       // Find the first supported MIME type
-      const mimeType = SUPPORTED_MIME_TYPES.find(type => MediaRecorder.isTypeSupported(type));
+      let mimeType = mimeTypesToTry.find(type => MediaRecorder.isTypeSupported(type));
+      
+      // Fall back to any supported type if none of the preferred types are supported
+      if (!mimeType) {
+        mimeType = SUPPORTED_MIME_TYPES.find(type => MediaRecorder.isTypeSupported(type));
+      }
       
       if (!mimeType) {
-        throw new Error('No supported audio format found');
+        throw new Error('No supported audio format found on this device');
       }
 
       console.log('Using audio format:', mimeType);
       
-      mediaRecorderRef.current = new MediaRecorder(stream, {
+      const options: MediaRecorderOptions = {
         mimeType,
         audioBitsPerSecond: 128000 // 128 kbps
-      });
+      };
       
+      mediaRecorderRef.current = new MediaRecorder(stream, options);
       audioChunksRef.current = [];
 
+      // Request data more frequently on mobile to ensure we capture everything
+      const timeslice = isMobile ? 1000 : 10000; // 1 second chunks on mobile, 10 seconds on desktop
+
       mediaRecorderRef.current.ondataavailable = (event) => {
-        if (event.data.size > 0) {
+        if (event.data && event.data.size > 0) {
+          console.log(`Received audio chunk: ${event.data.size} bytes`);
           audioChunksRef.current.push(event.data);
         }
       };
 
       mediaRecorderRef.current.onstop = () => {
+        // Create blob with the correct mime type
         const audioBlob = new Blob(audioChunksRef.current, { type: mimeType });
         console.log('Recording stopped. Blob type:', audioBlob.type, 'size:', audioBlob.size);
+        
+        if (audioBlob.size === 0) {
+          setError('No audio data was captured. Please try again with a different browser or device.');
+          return;
+        }
+        
         setAudioBlob(audioBlob);
         processAudioToText(audioBlob);
       };
 
-      mediaRecorderRef.current.start();
+      // Start recording with timeslice to get data more frequently
+      mediaRecorderRef.current.start(timeslice);
       setIsRecording(true);
     } catch (err) {
       console.error('Error starting recording:', err);
-      setError('Failed to access microphone. Please check permissions and try again.');
+      setError(`Failed to access microphone: ${err instanceof Error ? err.message : 'Unknown error'}. Please check permissions and try again.`);
     }
   };
 
@@ -132,14 +183,23 @@ const AudioRecorder: React.FC<AudioRecorderProps> = ({ selectedEmail, onDraftSav
     setError(null);
     
     try {
+      console.log(`Processing audio for transcription: ${audioBlob.size} bytes, type: ${audioBlob.type}`);
+      
+      // Check if the audio blob is valid
+      if (audioBlob.size < 1000) { // Less than 1KB is probably too small
+        throw new Error('Audio recording is too short or empty');
+      }
+      
       const text = await transcribeSpeech(audioBlob);
+      console.log('Transcription successful:', text);
       setTranscription(text);
       
       // Once we have transcription, generate a draft reply
       await generateReply(text);
     } catch (err) {
       console.error('Error processing audio:', err);
-      setError('Failed to transcribe audio. Please try again.');
+      const errorMessage = err instanceof Error ? err.message : 'Unknown error';
+      setError(`Failed to transcribe audio: ${errorMessage}. Please try again.`);
     } finally {
       setProcessingAudio(false);
     }
@@ -263,7 +323,48 @@ const AudioRecorder: React.FC<AudioRecorderProps> = ({ selectedEmail, onDraftSav
   };
 
   const theme = useTheme();
+  // For debugging
+  // console.log('AudioRecorder render, selectedEmail:', selectedEmail?.id, 'stableEmail:', stableEmail?.id);
   
+  // Use stableEmail to prevent flickering
+  const emailToUse = stableEmail || selectedEmail;
+
+  // If we don't have a stable or selected email, show the empty state
+  if (!emailToUse) {
+    return (
+      <Box sx={{ 
+        display: 'flex', 
+        flexDirection: 'column', 
+        alignItems: 'center', 
+        justifyContent: 'center',
+        minHeight: '300px',
+        width: '100%',
+        textAlign: 'center'
+      }}>
+        <Box 
+          sx={{ 
+            width: { xs: 70, sm: 90 }, 
+            height: { xs: 70, sm: 90 }, 
+            borderRadius: '50%',
+            backgroundColor: theme => theme.palette.mode === 'dark' ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.05)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            mb: 2
+          }}
+        >
+          <MicIcon sx={{ fontSize: { xs: 32, sm: 40 }, color: 'text.secondary', opacity: 0.7 }} />
+        </Box>
+        <Typography variant="h6" sx={{ mb: 1 }}>
+          Select an Email to Reply
+        </Typography>
+        <Typography variant="body2" color="text.secondary" sx={{ maxWidth: 400 }}>
+          Choose an email from the list to start recording your audio response.
+        </Typography>
+      </Box>
+    );
+  }
+
   return (
     <Box>
       {/* Email Subject Header */}
@@ -289,10 +390,10 @@ const AudioRecorder: React.FC<AudioRecorderProps> = ({ selectedEmail, onDraftSav
             lineHeight: 1.3
           }}
         >
-          {selectedEmail?.subject || "Email Subject"}
+          {emailToUse?.subject || "Email Subject"}
         </Typography>
         <Typography variant="body2" color="text.secondary">
-          From: {selectedEmail?.from?.name || selectedEmail?.from?.email || "Sender"}
+          From: {emailToUse?.from?.name || emailToUse?.from?.email || "Sender"}
         </Typography>
       </Box>
       
@@ -325,24 +426,25 @@ const AudioRecorder: React.FC<AudioRecorderProps> = ({ selectedEmail, onDraftSav
       
       {/* Recording UI */}
       <Paper 
-          elevation={0}
-          sx={{ 
-            p: { xs: spacing.xs, sm: spacing.sm }, 
-            mt: spacing.sm, 
-            borderRadius: '12px',
-            border: '1px solid',
-            borderColor: 'divider',
-            backgroundColor: theme => theme.palette.mode === 'dark' ? 'rgba(255,255,255,0.03)' : 'rgba(0,0,0,0.01)',
-            display: 'flex',
-            flexDirection: 'column',
-            alignItems: 'center',
-            justifyContent: 'center',
-            position: 'relative',
-            minHeight: '200px',
-            overflow: 'visible'
-          }}
-        >
-        {!audioBlob && !isRecording && !processingAudio && (
+        elevation={0}
+        sx={{ 
+          p: { xs: spacing.xs, sm: spacing.sm }, 
+          mt: spacing.sm, 
+          borderRadius: '12px',
+          border: '1px solid',
+          borderColor: 'divider',
+          backgroundColor: theme => theme.palette.mode === 'dark' ? 'rgba(255,255,255,0.03)' : 'rgba(0,0,0,0.01)',
+          display: 'flex',
+          flexDirection: 'column',
+          alignItems: 'center',
+          justifyContent: 'center',
+          position: 'relative',
+          minHeight: '200px',
+          overflow: 'visible'
+        }}
+      >
+        {/* Record Your Response UI */}
+        {!isRecording && !processingAudio && !audioBlob && !transcription && (
           <Box sx={{ textAlign: 'center', mb: 2, width: '100%' }}>
             <Typography variant="h6" gutterBottom>
               Record Your Response
@@ -350,26 +452,36 @@ const AudioRecorder: React.FC<AudioRecorderProps> = ({ selectedEmail, onDraftSav
             <Typography variant="body2" color="text.secondary" sx={{ mb: 2, maxWidth: 400, mx: 'auto' }}>
               Click the microphone button below to start recording your response. Speak clearly for best results.
             </Typography>
+            <Button
+              variant="contained"
+              color="primary"
+              startIcon={<MicIcon />}
+              onClick={startRecording}
+              disabled={isRecording || processingAudio || generatingDraft}
+              sx={{ 
+                borderRadius: '8px', 
+                px: 3,
+                py: 1.5,
+                boxShadow: 2,
+                mt: 2,
+                minWidth: { xs: '180px', sm: '200px' }
+              }}
+            >
+              Start Recording
+            </Button>
           </Box>
         )}
         
+        {/* Recording in progress UI */}
         {isRecording && (
           <Box 
             sx={{ 
-              position: 'absolute',
-              top: 0,
-              left: 0,
-              right: 0,
-              bottom: 0,
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'center',
               flexDirection: 'column',
-              backgroundColor: theme => theme.palette.mode === 'dark' ? 'rgba(0,0,0,0.5)' : 'rgba(0,0,0,0.05)',
-              borderRadius: '12px',
-              zIndex: 2,
-              padding: { xs: spacing.xs, sm: spacing.sm },
-              mt: spacing.sm
+              width: '100%',
+              my: 2
             }}
           >
             <Box 
@@ -412,28 +524,8 @@ const AudioRecorder: React.FC<AudioRecorderProps> = ({ selectedEmail, onDraftSav
             </Button>
           </Box>
         )}
-        
-        <Box sx={{ display: 'flex', justifyContent: 'center', my: 2, position: 'relative', zIndex: 1, width: '100%' }}>
-          {!isRecording ? (
-            <Button
-              variant="contained"
-              color="primary"
-              startIcon={<MicIcon />}
-              onClick={startRecording}
-              disabled={isRecording || processingAudio || generatingDraft}
-              sx={{ 
-                borderRadius: '8px', 
-                px: 3,
-                py: 1.5,
-                boxShadow: 2,
-                minWidth: { xs: '180px', sm: '200px' }
-              }}
-            >
-              Start Recording
-            </Button>
-          ) : null}
-        </Box>
 
+        {/* Processing audio UI */}
         {processingAudio && (
           <Box 
             sx={{ 
@@ -452,7 +544,8 @@ const AudioRecorder: React.FC<AudioRecorderProps> = ({ selectedEmail, onDraftSav
           </Box>
         )}
 
-        {transcription && (
+        {/* Transcription UI */}
+        {transcription && !isRecording && !processingAudio && (
           <Paper
             elevation={0}
             sx={{
@@ -462,7 +555,8 @@ const AudioRecorder: React.FC<AudioRecorderProps> = ({ selectedEmail, onDraftSav
               borderRadius: '12px',
               backgroundColor: theme => theme.palette.mode === 'dark' ? 'rgba(255,255,255,0.03)' : 'rgba(0,0,0,0.01)',
               border: '1px solid',
-              borderColor: 'divider'
+              borderColor: 'divider',
+              width: '100%'
             }}
           >
             <Typography
@@ -479,7 +573,7 @@ const AudioRecorder: React.FC<AudioRecorderProps> = ({ selectedEmail, onDraftSav
       </Paper>
 
       {/* Draft Reply Section */}
-      {draftReply && (
+      {draftReply && !isRecording && !processingAudio && stableEmail && (
         <Paper 
           elevation={0}
           sx={{ 
@@ -587,7 +681,7 @@ const AudioRecorder: React.FC<AudioRecorderProps> = ({ selectedEmail, onDraftSav
             </Box>
           )}
 
-          {draftReply && (
+          {draftReply && !generatingDraft && (
             <Box sx={{ 
               display: 'flex', 
               gap: spacing.sm,
