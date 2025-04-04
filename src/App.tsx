@@ -9,6 +9,7 @@ import EmailViewPage from './pages/EmailViewPage';
 import TestPage from './pages/TestPage';
 import ServiceTester from './components/ServiceTester';
 import SettingsPage from './pages/SettingsPage';
+import TestActionComponentPage from './pages/TestActionComponentPage';
 
 // Components
 import Layout from './components/Layout';
@@ -110,6 +111,13 @@ function App() {
             <ProtectedRoute>
               <Layout>
                 <SettingsPage />
+              </Layout>
+            </ProtectedRoute>
+          } />
+          <Route path="/test-action" element={
+            <ProtectedRoute>
+              <Layout>
+                <TestActionComponentPage />
               </Layout>
             </ProtectedRoute>
           } />

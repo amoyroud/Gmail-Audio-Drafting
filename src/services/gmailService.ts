@@ -259,27 +259,157 @@ export const signIn = async (): Promise<void> => {
     throw error;
   }
 };
-
-
-
 /**
- * Sign out from Gmail
+ * Archive an email by removing it from the inbox
+ * @param emailId The ID of the email to archive
+ * @returns Object indicating success or failure
  */
-export const archiveEmail = async (emailId: string): Promise<void> => {
-  await ensureAuthenticated();
-
+export const archiveEmail = async (emailId: string): Promise<{success: boolean, data?: any}> => {
   try {
-    // Directly use the GAPI client which handles token management for us
-    await window.gapi.client.gmail.users.messages.modify({
+    await ensureAuthenticated();
+    
+    const response = await window.gapi.client.gmail.users.messages.modify({
       userId: 'me',
       id: emailId,
       resource: {
         removeLabelIds: ['INBOX']
       }
     });
+    
+    return {
+      success: true,
+      data: response.result
+    };
   } catch (error) {
     console.error('Error archiving email:', error);
+    return {
+      success: false,
+      data: error
+    };
+  }
+};
+
+/**
+ * Get all user's Gmail labels
+ * @returns Array of label objects
+ */
+export const getLabels = async (): Promise<any[]> => {
+  try {
+    await ensureAuthenticated();
+    
+    const response = await window.gapi.client.gmail.users.labels.list({
+      userId: 'me'
+    });
+    
+    return response.result.labels || [];
+  } catch (error) {
+    console.error('Error fetching labels:', error);
+    return [];
+  }
+};
+
+/**
+ * Get or create the To Read label
+ * @returns Label ID of the To Read label
+ */
+export const getOrCreateToReadLabel = async (): Promise<string> => {
+  try {
+    await ensureAuthenticated();
+    
+    // First check if the label already exists
+    const labels = await getLabels();
+    const toReadLabel = labels.find(label => 
+      label.name.toLowerCase() === 'to read' || 
+      label.name.toLowerCase() === 'to-read'
+    );
+    
+    if (toReadLabel) {
+      console.log('Found existing To Read label:', toReadLabel.id);
+      return toReadLabel.id;
+    }
+    
+    // Create the label if it doesn't exist
+    const response = await window.gapi.client.gmail.users.labels.create({
+      userId: 'me',
+      resource: {
+        name: 'To Read',
+        labelListVisibility: 'labelShow',
+        messageListVisibility: 'show'
+      }
+    });
+    
+    console.log('Created new To Read label:', response.result.id);
+    return response.result.id;
+  } catch (error) {
+    console.error('Error getting or creating To Read label:', error);
     throw error;
+  }
+};
+
+/**
+ * Modify labels for an email
+ * @param emailId The ID of the email to modify
+ * @param labelModification Object with addLabelIds and removeLabelIds arrays
+ * @returns Object indicating success or failure
+ */
+export const modifyLabels = async (
+  emailId: string, 
+  labelModification: {addLabelIds: string[], removeLabelIds: string[]}
+): Promise<{success: boolean, data?: any}> => {
+  try {
+    await ensureAuthenticated();
+    
+    const response = await window.gapi.client.gmail.users.messages.modify({
+      userId: 'me',
+      id: emailId,
+      resource: labelModification
+    });
+    
+    return {
+      success: true,
+      data: response.result
+    };
+  } catch (error) {
+    console.error('Error modifying email labels:', error);
+    return {
+      success: false,
+      data: error
+    };
+  }
+};
+
+/**
+ * Move an email to the To Read label
+ * @param emailId The ID of the email to move
+ * @returns Object indicating success or failure
+ */
+export const moveToRead = async (emailId: string): Promise<{success: boolean, data?: any}> => {
+  try {
+    await ensureAuthenticated();
+    
+    // First get or create the To Read label
+    const toReadLabelId = await getOrCreateToReadLabel();
+    
+    // Now apply the label and remove from inbox
+    const response = await window.gapi.client.gmail.users.messages.modify({
+      userId: 'me',
+      id: emailId,
+      resource: {
+        addLabelIds: [toReadLabelId],
+        removeLabelIds: ['INBOX']
+      }
+    });
+    
+    return {
+      success: true,
+      data: response.result
+    };
+  } catch (error) {
+    console.error('Error moving email to To Read:', error);
+    return {
+      success: false,
+      data: error
+    };
   }
 };
 

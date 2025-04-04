@@ -3,6 +3,7 @@ import { Box, Typography, Button, useTheme } from '@mui/material';
 import EmailIcon from '@mui/icons-material/Email';
 import SearchOffIcon from '@mui/icons-material/SearchOff';
 import MicIcon from '@mui/icons-material/Mic';
+import InboxIcon from '@mui/icons-material/Inbox';
 
 type EmptyStateType = 'noEmails' | 'noResults' | 'noSelection';
 
@@ -10,37 +11,60 @@ interface EmptyStateProps {
   type: EmptyStateType;
   onAction?: () => void;
   actionLabel?: string;
+  message?: string;
+  icon?: 'email' | 'search' | 'mic' | 'inbox';
 }
 
-const EmptyState: React.FC<EmptyStateProps> = ({ type, onAction, actionLabel }) => {
+const EmptyState: React.FC<EmptyStateProps> = ({ type, onAction, actionLabel, message, icon }) => {
   const theme = useTheme();
   
+  const getIconComponent = (iconType?: string) => {
+    switch (iconType || 'default') {
+      case 'email': return <EmailIcon sx={{ fontSize: 72, color: 'primary.main', opacity: 0.9 }} />;
+      case 'search': return <SearchOffIcon sx={{ fontSize: 72, color: 'primary.main', opacity: 0.9 }} />;
+      case 'mic': return <MicIcon sx={{ fontSize: 72, color: 'primary.main', opacity: 0.9 }} />;
+      case 'inbox': return <InboxIcon sx={{ fontSize: 72, color: 'primary.main', opacity: 0.9 }} />;
+      default: return <EmailIcon sx={{ fontSize: 72, color: 'primary.main', opacity: 0.9 }} />;
+    }
+  };
+
   const getContent = () => {
+    // If custom icon and message are provided, use them
+    if (message && icon) {
+      return {
+        icon: getIconComponent(icon),
+        title: 'Select an Email',
+        description: message,
+        showAction: false
+      };
+    }
+    
+    // Otherwise use the default content based on type
     switch (type) {
       case 'noEmails':
         return {
-          icon: <EmailIcon sx={{ fontSize: 72, color: 'primary.main', opacity: 0.9 }} />,
+          icon: getIconComponent('email'),
           title: 'No Emails Found',
           description: 'Your inbox is empty or we couldn\'t fetch your emails. Check your connection or try refreshing.',
           showAction: true
         };
       case 'noResults':
         return {
-          icon: <SearchOffIcon sx={{ fontSize: 72, color: 'primary.main', opacity: 0.9 }} />,
+          icon: getIconComponent('search'),
           title: 'No Results Found',
           description: 'We couldn\'t find any emails matching your search criteria. Try adjusting your search terms.',
           showAction: true
         };
       case 'noSelection':
         return {
-          icon: <MicIcon sx={{ fontSize: 72, color: 'primary.main', opacity: 0.9 }} />,
+          icon: getIconComponent('mic'),
           title: 'Select an Email to Reply',
-          description: 'Choose an email from the list to start recording your audio response.',
+          description: message || 'Choose an email from the list to start recording your audio response.',
           showAction: false
         };
       default:
         return {
-          icon: <EmailIcon sx={{ fontSize: 72, color: 'primary.main', opacity: 0.9 }} />,
+          icon: getIconComponent(),
           title: 'Nothing to See Here',
           description: 'There\'s nothing to display at the moment.',
           showAction: false

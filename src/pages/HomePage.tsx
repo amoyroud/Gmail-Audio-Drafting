@@ -21,9 +21,12 @@ import SearchIcon from '@mui/icons-material/Search';
 import ArchiveIcon from '@mui/icons-material/Archive';
 
 // Services
-import { archiveEmail, fetchEmails, getEmailById, getTotalEmailCount, type EmailsResponse } from '../services/gmailService';
-import { Email } from '../types/types';
+import { archiveEmail, fetchEmails, getEmailById, getTotalEmailCount, moveToRead, type EmailsResponse } from '../services/gmailService';
+import { Email, EmailActionType, TodoTask } from '../types/types';
 import AudioRecorder from '../components/AudioRecorder';
+import ActionSelector from '../components/ActionSelector';
+import TodoList from '../components/TodoList';
+import AssignmentIcon from '@mui/icons-material/Assignment';
 import GmailAuth from '../components/GmailAuth';
 import EmptyState from '../components/EmptyState';
 import { useEmail } from '../context/EmailContext';
@@ -37,13 +40,18 @@ const HomePage: React.FC<HomePageProps> = () => {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   
   const [emails, setEmails] = useState<Email[]>([]);
-  const [nextPageToken, setNextPageToken] = useState<string | undefined>();
+  const [nextPageToken, setNextPageToken] = useState<string | null>(null);
   const [loading, setLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
   const [archiving, setArchiving] = useState<string | null>(null);
   const [selectedEmail, setSelectedEmail] = useState<Email | null>(null);
   const [selectedEmailIndex, setSelectedEmailIndex] = useState<number>(0);
   const [searchQuery, setSearchQuery] = useState<string>('');
+  const [selectedAction, setSelectedAction] = useState<EmailActionType>('archive');
+  const [tasks, setTasks] = useState<TodoTask[]>([]);
+  const [isActionInProgress, setIsActionInProgress] = useState(false);
+  const [actionSuccess, setActionSuccess] = useState<string | null>(null);
+  const [previousEmailId, setPreviousEmailId] = useState<string | null>(null);
   const { setIsRecorderOpen } = useEmail();
 
   const fetchEmailsList = useCallback(async (pageToken?: string) => {
@@ -56,7 +64,7 @@ const HomePage: React.FC<HomePageProps> = () => {
       } else {
         setEmails(response.emails as Email[]);
       }
-      setNextPageToken(response.nextPageToken);
+      setNextPageToken(response.nextPageToken || null);
     } catch (err) {
       console.error('Error fetching emails:', err);
       setError('Failed to load emails. Please try again.');
@@ -112,18 +120,108 @@ const HomePage: React.FC<HomePageProps> = () => {
   }, [selectedEmail]);
 
   const handleArchive = async (emailId: string) => {
+    setArchiving(emailId);
     try {
-      setArchiving(emailId);
       await archiveEmail(emailId);
-      setEmails(emails => emails.filter(e => e.id !== emailId));
+      // Remove the email from the list
+      setEmails(prevEmails => prevEmails.filter(email => email.id !== emailId));
+      // Reset selected email if it was archived
       if (selectedEmail?.id === emailId) {
         setSelectedEmail(null);
+        setSelectedAction('archive');
       }
-    } catch (error) {
-      console.error('Failed to archive email:', error);
-      setError('Failed to archive email');
+      setActionSuccess('Email archived successfully');
+      setTimeout(() => setActionSuccess(null), 3000);
+    } catch (err) {
+      console.error('Error archiving email:', err);
+      setError('Failed to archive email. Please try again.');
     } finally {
       setArchiving(null);
+    }
+  };
+
+  const handleMoveToRead = async (emailId: string) => {
+    try {
+      setIsActionInProgress(true);
+      
+      // Use the moveToRead service which will find or create the To Read label
+      const result = await moveToRead(emailId);
+      
+      if (!result.success) {
+        throw new Error('Failed to move email to To Read');
+      }
+      
+      // Update local state
+      setEmails(prevEmails => prevEmails.filter(email => email.id !== emailId));
+      setActionSuccess('Email moved to "To Read" label');
+      setTimeout(() => setActionSuccess(null), 3000);
+      setSelectedAction('archive');
+    } catch (error) {
+      console.error('Error moving email to To Read:', error);
+      setError('Failed to move email to To Read. Please try again.');
+    } finally {
+      setIsActionInProgress(false);
+    }
+  }
+  
+  // Handle action selector click
+  const handleTaskComplete = (taskId: string) => {
+    setTasks(prevTasks =>
+      prevTasks.map(task =>
+        task.id === taskId ? { ...task, completed: !task.completed } : task
+      )
+    );
+  };
+
+  const handleTaskDelete = (taskId: string) => {
+    setTasks(prevTasks => prevTasks.filter(task => task.id !== taskId));
+  };
+
+  const handleActionSelect = (action: EmailActionType) => {
+    setSelectedAction(action);
+    
+    // For certain actions (archive, move-to-read, task), execute immediately if an email is selected
+    if (selectedEmail && (action === 'archive' || action === 'move-to-read' || action === 'task')) {
+      setIsActionInProgress(true);
+      handleEmailAction(action, selectedEmail)
+        .then(result => {
+          if (result && result.success) {
+            setActionSuccess(result.message);
+            setTimeout(() => setActionSuccess(null), 3000);
+          }
+        })
+        .finally(() => {
+          setIsActionInProgress(false);
+        });
+    }
+  };
+
+  const handleEmailAction = async (action: EmailActionType, email: Email) => {
+    if (action === 'task') {
+      const newTask: TodoTask = {
+        id: `task-${Date.now()}`,
+        emailId: email.id,
+        subject: email.subject,
+        snippet: email.snippet,
+        from: email.from,
+        date: email.date,
+        completed: false,
+        createdAt: new Date().toISOString()
+      };
+      setTasks(prevTasks => [...prevTasks, newTask]);
+      return { success: true, message: 'Email added to tasks' };
+    }
+    // Always update the selected action - this allows switching between actions
+    setSelectedAction(action);
+    
+    // If Archive or To Read actions, execute them directly
+    if (selectedEmail) {
+      if (action === 'archive') {
+        handleArchive(selectedEmail.id);
+      } else if (action === 'move-to-read') {
+        handleMoveToRead(selectedEmail.id);
+      }
+      // Other actions (speech-to-text, ai-draft, quick-decline) will be handled by AudioRecorder
     }
   };
 
@@ -233,65 +331,135 @@ const HomePage: React.FC<HomePageProps> = () => {
   }
 
   return (
-    <Box sx={{ p: { xs: 2, sm: 3 }, maxWidth: 1200, mx: 'auto' }}>
+    <Box sx={{ p: { xs: 2, sm: 3 }, maxWidth: '1600px', mx: 'auto' }}>
       {error && (
         <Alert severity="error" sx={{ mb: 3 }}>
           {error}
         </Alert>
       )}
 
-      {/* Search Bar and Inbox Count */}
-      <Box sx={{ display: 'flex', gap: 2, alignItems: 'center', mb: 3 }}>
-        <TextField
-          size="small"
-          placeholder="Search emails..."
-          value={searchQuery}
-          onChange={(e: React.ChangeEvent<HTMLInputElement>) => setSearchQuery(e.target.value)}
-          sx={{ flex: 1 }}
-          InputProps={{
-            startAdornment: (
-              <InputAdornment position="start">
-                <SearchIcon color="action" />
-              </InputAdornment>
+      <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', md: '1fr 320px' }, gap: 3 }}>
+        <Box sx={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
+          {/* Search Bar */}
+          <Paper
+            elevation={0}
+            sx={{
+              p: 1,
+              borderRadius: '12px',
+              border: '1px solid',
+              borderColor: 'divider',
+              display: 'flex',
+              alignItems: 'center'
+            }}
+          >
+            <TextField
+              fullWidth
+              placeholder="Search emails..."
+              variant="standard"
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              InputProps={{
+                disableUnderline: true,
+                startAdornment: (
+                  <InputAdornment position="start">
+                    <SearchIcon color="action" />
+                  </InputAdornment>
+                ),
+              }}
+              sx={{
+                mx: 1,
+                '& .MuiInputBase-root': {
+                  height: 40,
+                }
+              }}
+            />
+          </Paper>
+
+          {/* Action Controls - now positioned ABOVE the email list */}
+          <Paper 
+            elevation={0}
+            sx={{ 
+              p: { xs: 2, sm: 3 }, 
+              borderRadius: '12px',
+              border: '1px solid',
+              borderColor: 'divider',
+              backgroundColor: theme.palette.mode === 'dark' ? 'rgba(255,255,255,0.03)' : 'rgba(0,0,0,0.01)',
+              width: '100%',
+              display: 'flex',
+              flexDirection: 'column',
+              mb: 3
+            }}
+          >
+            <Typography variant="h6" sx={{ mb: 2, fontWeight: 600 }}>
+              Email Response
+            </Typography>
+            
+            {actionSuccess && (
+              <Alert severity="success" sx={{ mb: 2 }}>
+                {actionSuccess}
+              </Alert>
+            )}
+            
+            {selectedEmail ? (
+            (selectedAction === 'speech-to-text' || selectedAction === 'ai-draft' || selectedAction === 'quick-decline') ? (
+              <AudioRecorder 
+                selectedEmail={selectedEmail} 
+                initialAction={selectedAction}
+                onActionComplete={() => setSelectedAction('archive')}
+              />
+            ) : (
+              <EmptyState 
+                type="noSelection" 
+                message="Select an action mode below"
+                icon="inbox"
+              />
             )
-          }}
-        />
+          ) : (
+            <EmptyState 
+              type="noSelection" 
+              message="Select an email from the list below"
+              icon="inbox"
+            />
+          )}
+        </Paper>
+
+        {/* Action Selector Bar - now between email response and list */}
         <Paper
           elevation={0}
           sx={{
-            p: { xs: 2, sm: 3 },
+            p: 3,
+            mb: 3,
             borderRadius: '12px',
             border: '1px solid',
             borderColor: 'divider',
             backgroundColor: theme.palette.mode === 'dark' ? 'rgba(255,255,255,0.03)' : 'rgba(0,0,0,0.01)',
-            display: 'flex',
-            alignItems: 'center',
-            gap: 1
           }}
         >
-          <Typography variant="body2" color="text.secondary">
-            Inbox
-          </Typography>
-          <Typography variant="body1" fontWeight={500}>
-            {emails.length}
-          </Typography>
+          <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
+            <Typography variant="h6" sx={{ mb: 2, fontWeight: 600, color: theme.palette.text.primary }}>
+              Select Action Mode
+            </Typography>
+            <ActionSelector
+              selectedAction={selectedAction}
+              onActionSelect={handleActionSelect}
+              onActionExecute={(action) => {
+                if (selectedEmail) {
+                  handleEmailAction(action, selectedEmail);
+                }
+              }}
+              disabled={isActionInProgress}
+            />
+          </Box>
         </Paper>
-      </Box>
 
-      <Box sx={{ 
-        display: 'flex', 
-        gap: 3, 
-        flexDirection: isMobile ? 'column' : 'row',
-        width: '100%'
-      }}>
-        {/* Email List */}
+        {/* Email List - now positioned at the bottom */}
         <Paper 
           elevation={0}
           sx={{ 
-            flex: 1, 
-            maxHeight: 'calc(100vh - 250px)', 
+            width: '100%',
+            maxHeight: 'calc(100vh - 550px)', /* Adjust height to fit screen with other elements */
+            minHeight: '300px',
             overflow: 'auto',
-            minWidth: isMobile ? '100%' : '50%',
             borderRadius: '12px',
             border: '1px solid',
             borderColor: 'divider'
@@ -461,32 +629,16 @@ const HomePage: React.FC<HomePageProps> = () => {
             </Box>
           )}
         </Paper>
+        </Box>
 
-        {/* Audio Recorder */}
-        <Paper 
-          elevation={0}
-          sx={{ 
-            p: { xs: 2, sm: 3 }, 
-            borderRadius: '12px',
-            border: '1px solid',
-            borderColor: 'divider',
-            backgroundColor: theme.palette.mode === 'dark' ? 'rgba(255,255,255,0.03)' : 'rgba(0,0,0,0.01)',
-            flexGrow: 1,
-            minWidth: 0,
-            flexBasis: { xs: '100%', md: 0 },
-            display: 'flex',
-            flexDirection: 'column'
-          }}
-        >
-          <Typography variant="h6" sx={{ mb: 2, fontWeight: 600 }}>
-            Audio Response
-          </Typography>
-          {selectedEmail ? (
-            <AudioRecorder selectedEmail={selectedEmail} />
-          ) : (
-            <EmptyState type="noSelection" />
-          )}
-        </Paper>
+        {/* Task List Panel */}
+        <Box sx={{ display: { xs: 'none', md: 'block' } }}>
+          <TodoList
+            tasks={tasks}
+            onTaskComplete={handleTaskComplete}
+            onTaskDelete={handleTaskDelete}
+          />
+        </Box>
       </Box>
     </Box>
   );
