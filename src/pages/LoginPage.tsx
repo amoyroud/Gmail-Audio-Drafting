@@ -28,14 +28,14 @@ const LoginPage: React.FC = () => {
         
         if (authenticated) {
           console.log('LoginPage: Already signed in, navigating to homepage');
-          navigate('/');
+          navigate('/home');
           return;
         }
         
         // Listen for authentication events
         const handleAuthChange = () => {
           console.log('LoginPage: Authentication event received, navigating to homepage');
-          navigate('/');
+          navigate('/home');
         };
         
         window.addEventListener('gmail_authenticated', handleAuthChange);

@@ -37,10 +37,11 @@ const GmailAuth: React.FC<GmailAuthProps> = ({ onAuthStateChange }) => {
 
     initialize();
 
-    // Listen for authentication state changes
-    const handleAuthEvent = () => {
+    // Listen for authentication events
+    const handleAuthChange = () => {
+      console.log('GmailAuth: Auth event received');
       setAuthenticated(true);
-      onAuthStateChange?.(true);
+      setLoading(false);
     };
 
     const handleSignOutEvent = () => {
@@ -48,11 +49,11 @@ const GmailAuth: React.FC<GmailAuthProps> = ({ onAuthStateChange }) => {
       onAuthStateChange?.(false);
     };
 
-    window.addEventListener('gmail_authenticated', handleAuthEvent);
+    window.addEventListener('gmail_authenticated', handleAuthChange);
     window.addEventListener('gmail_signed_out', handleSignOutEvent);
 
     return () => {
-      window.removeEventListener('gmail_authenticated', handleAuthEvent);
+      window.removeEventListener('gmail_authenticated', handleAuthChange);
       window.removeEventListener('gmail_signed_out', handleSignOutEvent);
     };
   }, [onAuthStateChange]);

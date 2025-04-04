@@ -4,6 +4,7 @@ import { Routes, Route, Navigate, useNavigate } from 'react-router-dom';
 // Pages
 import HomePage from './pages/HomePage';
 import LoginPage from './pages/LoginPage';
+import LandingPage from './pages/LandingPage';
 import EmailViewPage from './pages/EmailViewPage';
 import TestPage from './pages/TestPage';
 import ServiceTester from './components/ServiceTester';
@@ -75,8 +76,9 @@ function App() {
     <ThemeProvider>
       <EmailProvider>
         <Routes>
+          <Route path="/" element={<LandingPage />} />
           <Route path="/login" element={<LoginPage />} />
-          <Route path="/" element={
+          <Route path="/home" element={
             <ProtectedRoute>
               <Layout>
                 <HomePage />
