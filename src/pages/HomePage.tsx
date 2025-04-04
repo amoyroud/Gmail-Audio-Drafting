@@ -1,24 +1,21 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { 
-  Alert,
   Box,
-  Button,
-  CircularProgress,
-  Divider,
-  IconButton,
-  InputAdornment,
   List,
   ListItem,
-  ListItemButton,
-  ListItemText,
-  Paper,
-  TextField,
-  Tooltip,
   Typography,
-  useMediaQuery,
+  Button,
+  IconButton,
+  Paper,
+  CircularProgress,
   useTheme,
-  Collapse
+  useMediaQuery,
+  Alert,
+  TextField,
+  InputAdornment,
+  Divider,
+  ListItemButton
 } from '@mui/material';
 import SearchIcon from '@mui/icons-material/Search';
 import ArchiveIcon from '@mui/icons-material/Archive';
@@ -31,24 +28,23 @@ import GmailAuth from '../components/GmailAuth';
 import EmptyState from '../components/EmptyState';
 import { useEmail } from '../context/EmailContext';
 
-const HomePage: React.FC = () => {
+interface HomePageProps {}
+
+const HomePage: React.FC<HomePageProps> = () => {
   const navigate = useNavigate();
   const theme = useTheme();
   const isMobile = useMediaQuery(theme.breakpoints.down('sm'));
+  const [isAuthenticated, setIsAuthenticated] = useState(false);
   
   const [emails, setEmails] = useState<Email[]>([]);
-  // Removed totalEmailCount state as it's not currently used
-  const [nextPageToken, setNextPageToken] = useState<string>();
-  const [loading, setLoading] = useState(true);
+  const [nextPageToken, setNextPageToken] = useState<string | undefined>();
+  const [loading, setLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
   const [archiving, setArchiving] = useState<string | null>(null);
   const [selectedEmail, setSelectedEmail] = useState<Email | null>(null);
   const [selectedEmailIndex, setSelectedEmailIndex] = useState<number>(0);
-  const [isAuthenticated, setIsAuthenticated] = useState(false);
-  const [searchQuery, setSearchQuery] = useState('');
+  const [searchQuery, setSearchQuery] = useState<string>('');
   const { setIsRecorderOpen } = useEmail();
-
-  // Removed fetchTotalCount as it's not currently used
 
   const fetchEmailsList = useCallback(async (pageToken?: string) => {
     if (!isAuthenticated) return;
@@ -60,8 +56,6 @@ const HomePage: React.FC = () => {
       } else {
         setEmails(response.emails as Email[]);
       }
-      // Don't update total count here as we get it separately
-      // setTotalEmailCount(response.totalCount);
       setNextPageToken(response.nextPageToken);
     } catch (err) {
       console.error('Error fetching emails:', err);
@@ -90,10 +84,8 @@ const HomePage: React.FC = () => {
     });
   };
 
-  // Filter emails by search query and sort by date (newest first)
   const filteredEmails = emails
     .filter(email => {
-      // Apply search filter
       return searchQuery === '' || 
         email.subject.toLowerCase().includes(searchQuery.toLowerCase()) ||
         email.from.name?.toLowerCase().includes(searchQuery.toLowerCase()) ||
@@ -102,7 +94,6 @@ const HomePage: React.FC = () => {
     })
     .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
 
-  // Handle email selection and expansion
   const handleEmailClick = async (email: Email) => {
     if (selectedEmail?.id === email.id) {
       setSelectedEmail(null);
@@ -113,14 +104,11 @@ const HomePage: React.FC = () => {
     }
   };
 
-  // Handle email archiving
   const handleArchive = async (emailId: string) => {
     try {
       setArchiving(emailId);
       await archiveEmail(emailId);
-      // Remove the email from the list
       setEmails(emails => emails.filter(e => e.id !== emailId));
-      // Clear selection if archived email was selected
       if (selectedEmail?.id === emailId) {
         setSelectedEmail(null);
       }
@@ -132,7 +120,6 @@ const HomePage: React.FC = () => {
     }
   };
 
-  // Handle keyboard navigation
   useEffect(() => {
     const handleKeyDown = async (event: KeyboardEvent) => {
       if (!filteredEmails || filteredEmails.length === 0) return;
@@ -169,16 +156,20 @@ const HomePage: React.FC = () => {
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [filteredEmails, selectedEmailIndex]);
 
-  // Update selected email when index changes
+  useEffect(() => {
+    if (selectedEmail) {
+      handleEmailClick(selectedEmail);
+    }
+  }, [selectedEmail, handleEmailClick]);
+
   useEffect(() => {
     if (filteredEmails && filteredEmails.length > selectedEmailIndex) {
-      setSelectedEmail(selectedEmail => {
-        const newEmail = filteredEmails[selectedEmailIndex];
-        // Only update if it's a different email
-        return newEmail && newEmail.id !== selectedEmail?.id ? newEmail : selectedEmail;
-      });
+      const newEmail = filteredEmails[selectedEmailIndex];
+      if (newEmail && newEmail.id !== selectedEmail?.id) {
+        setSelectedEmail(newEmail);
+      }
     }
-  }, [selectedEmailIndex, filteredEmails]);
+  }, [selectedEmailIndex, filteredEmails, selectedEmail]);
 
   if (!isAuthenticated) {
     return (

@@ -1,25 +1,21 @@
 import React, { useState, useEffect } from 'react';
-import { useParams } from 'react-router-dom';
 import {
   Box,
-  Typography,
-  CircularProgress,
-  Alert,
-  Paper,
-  Divider,
-  Card,
-  CardContent,
   Button,
+  CircularProgress,
   IconButton,
+  Paper,
+  Typography,
+  Tooltip,
+  Divider,
+  Alert,
   TextField,
-  Tooltip
 } from '@mui/material';
-import SendIcon from '@mui/icons-material/Send';
 import ArchiveIcon from '@mui/icons-material/Archive';
-import MicIcon from '@mui/icons-material/Mic';
+import SendIcon from '@mui/icons-material/Send';
+import { useNavigate, useParams } from 'react-router-dom';
 import { Email } from '../types/types';
 import { getEmailById, createDraft, archiveEmail } from '../services/gmailService';
-import { useNavigate } from 'react-router-dom';
 import AudioRecorder from '../components/AudioRecorder';
 import { useEmail } from '../context/EmailContext';
 import { Fab, useMediaQuery, useTheme } from '@mui/material';
@@ -57,7 +53,11 @@ const EmailViewPage: React.FC = () => {
     };
     
     fetchEmailDetails();
-  }, [emailId]);
+  }, [emailId, setSelectedEmail]);
+
+  const handleDraftChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    setDraftReply(e.target.value);
+  };
 
   const handleDraftSaved = () => {
     setSuccess('Draft saved successfully!');
@@ -171,9 +171,7 @@ const EmailViewPage: React.FC = () => {
                   try {
                     if (emailId) {
                       await archiveEmail(emailId);
-                      // Show success message
                       setSuccess('Email archived successfully');
-                      // Navigate back to inbox after a short delay
                       setTimeout(() => navigate('/'), 1500);
                     }
                   } catch (error) {

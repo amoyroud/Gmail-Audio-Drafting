@@ -8,6 +8,9 @@ interface GmailAuthProps {
 
 const GmailAuth: React.FC<GmailAuthProps> = ({ onAuthStateChange }) => {
   const [loading, setLoading] = useState(true);
+  const [isMounted, setIsMounted] = useState(true);
+  const [gapiLoaded, setGapiLoaded] = useState(false);
+  const [gisLoaded, setGisLoaded] = useState(false);
   const [authenticated, setAuthenticated] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -23,60 +26,68 @@ const GmailAuth: React.FC<GmailAuthProps> = ({ onAuthStateChange }) => {
   // Initialize client and set up listeners
   useEffect(() => {
     console.log('GmailAuth: Setting up auth');
-    let isMounted = true;
     
     const handleAuthenticated = () => {
       console.log('GmailAuth: Authenticated event received');
-      if (isMounted) {
-        setAuthenticated(true);
-        onAuthStateChange?.(true);
-      }
+      setAuthenticated(true);
+      setLoading(false);
     };
-    
-    const handleSignedOut = () => {
-      console.log('GmailAuth: Signed out event received');
-      if (isMounted) {
-        setAuthenticated(false);
-        onAuthStateChange?.(false);
-      }
+
+    const handleUnauthenticated = () => {
+      console.log('GmailAuth: Unauthenticated event received');
+      setAuthenticated(false);
+      setLoading(false);
     };
-    
-    // Set up event listeners
-    window.addEventListener('gmail_authenticated', handleAuthenticated);
-    window.addEventListener('gmail_signed_out', handleSignedOut);
-    
-    const setupAuth = async () => {
-      if (!isMounted) return;
-      
+
+    const isSignedIn = async () => {
+      if (!gapiLoaded || !gisLoaded) return false;
       try {
-        setLoading(true);
-        setError(null);
-        
-        console.log('GmailAuth: Initializing Gmail client');
-        await initGmailClient();
+        const auth = window.gapi.auth2.getAuthInstance();
+        return auth.isSignedIn.get();
+      } catch (error) {
+        console.error('Error checking sign-in status:', error);
+        return false;
+      }
+    };
+
+    const checkAuthStatus = async () => {
+      const signedIn = await isSignedIn();
+      if (onAuthStateChange && typeof signedIn === 'boolean') {
+        onAuthStateChange(signedIn);
+      }
+    };
+
+    const initializeGapi = async () => {
+      try {
+        await window.gapi.client.init({
+          apiKey: process.env.REACT_APP_GOOGLE_API_KEY,
+          clientId: process.env.REACT_APP_GOOGLE_CLIENT_ID,
+          scope: process.env.REACT_APP_GMAIL_API_SCOPE,
+          plugin_name: 'Gmail Audio Drafts'
+        });
+
         console.log('GmailAuth: Gmail client initialized');
+        setGapiLoaded(true);
         
         if (isMounted) {
           checkAuthStatus();
           setLoading(false);
         }
       } catch (error) {
-        console.error('GmailAuth: Error setting up Gmail auth:', error);
+        console.error('Error initializing Gmail client:', error);
         if (isMounted) {
-          setError(error instanceof Error ? error.message : 'Failed to initialize Gmail client');
+          setError('Failed to initialize Gmail client');
           setLoading(false);
         }
       }
     };
-    
-    setupAuth();
-    
+
+    window.gapi.load('client', initializeGapi);
+
     return () => {
-      isMounted = false;
-      window.removeEventListener('gmail_authenticated', handleAuthenticated);
-      window.removeEventListener('gmail_signed_out', handleSignedOut);
+      setIsMounted(false);
     };
-  }, [checkAuthStatus]);
+  }, [gapiLoaded, gisLoaded, onAuthStateChange]);
 
   // Handle sign-in click
   const handleSignIn = async () => {
