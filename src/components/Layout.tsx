@@ -1,8 +1,8 @@
 import React, { ReactNode, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { AppBar, Toolbar, IconButton, Typography, Box, Container, useMediaQuery, useTheme, Menu, MenuItem, Avatar, Fab, Modal } from '@mui/material';
+import { AppBar, Toolbar, IconButton, Typography, Box, Container, useMediaQuery, useTheme, Menu, MenuItem, Avatar, Fab, Modal, Divider } from '@mui/material';
 import MenuIcon from '@mui/icons-material/Menu';
-import AccountCircleIcon from '@mui/icons-material/AccountCircle';
+import SettingsIcon from '@mui/icons-material/Settings';
 import MicIcon from '@mui/icons-material/Mic';
 import { signOut } from '../services/gmailService';
 import { Email } from '../types/types';
@@ -53,7 +53,7 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
       minHeight: '100vh',
       backgroundColor: theme => theme.palette.mode === 'dark' ? '#121212' : '#ffffff'
     }}>
-      <AppBar position="static">
+      <AppBar position="static" sx={{ borderRadius: 0 }}>
         <Toolbar>
           <Box 
             component="div" 
@@ -85,15 +85,18 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
           <Box sx={{ flexGrow: 1 }} />
           <IconButton
             size="large"
-            aria-label="account of current user"
+            aria-label="settings menu"
             aria-controls="menu-appbar"
             aria-haspopup="true"
             onClick={handleMenuOpen}
             color="inherit"
+            sx={{ 
+              border: '1px solid',
+              borderColor: 'divider',
+              borderRadius: '8px',
+            }}
           >
-            <Avatar sx={{ width: 32, height: 32, bgcolor: theme.palette.secondary.main }}>
-              <AccountCircleIcon />
-            </Avatar>
+            <SettingsIcon />
           </IconButton>
           <Menu
             id="menu-appbar"

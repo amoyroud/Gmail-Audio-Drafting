@@ -21,13 +21,129 @@ import {
   InputLabel,
   Select,
   MenuItem,
-  Grid
+  Grid,
+  Card,
+  CardContent,
+  Stack
 } from '@mui/material';
 import HelpOutlineIcon from '@mui/icons-material/HelpOutline';
 import AddIcon from '@mui/icons-material/Add';
 import EditIcon from '@mui/icons-material/Edit';
 import DeleteIcon from '@mui/icons-material/Delete';
+import Brightness4Icon from '@mui/icons-material/Brightness4';
+import Brightness7Icon from '@mui/icons-material/Brightness7';
+import ColorLensIcon from '@mui/icons-material/ColorLens';
 import { useSettings, EmailTemplate } from '../services/settingsService';
+import { useThemeContext } from '../theme/ThemeProvider';
+import { ThemeMode } from '../theme/theme';
+
+// Theme Selector Component
+const ThemeSelector: React.FC = () => {
+  const { mode, setThemeMode } = useThemeContext();
+  const theme = useTheme();
+
+  // Theme options with display info
+  const themeOptions: Array<{value: ThemeMode, name: string, icon: React.ReactNode, description: string, colors: Array<{color: string, label: string}>}> = [
+    {
+      value: 'light',
+      name: 'Light Theme',
+      icon: <Brightness7Icon />,
+      description: 'Clean, bright interface with blue accents',
+      colors: [
+        { color: '#FFFFFF', label: 'Background' },
+        { color: '#2196F3', label: 'Primary' },
+        { color: '#FF5722', label: 'Secondary' },
+        { color: '#2A2A2A', label: 'Text' }
+      ]
+    },
+    {
+      value: 'dark',
+      name: 'Dark Theme',
+      icon: <Brightness4Icon />,
+      description: 'Reduced eye strain with dark background',
+      colors: [
+        { color: '#121212', label: 'Background' },
+        { color: '#90CAF9', label: 'Primary' },
+        { color: '#FFAB91', label: 'Secondary' },
+        { color: '#FFFFFF', label: 'Text' }
+      ]
+    },
+    {
+      value: 'palette',
+      name: 'Palette Theme',
+      icon: <ColorLensIcon />,
+      description: 'Custom color palette with warm natural tones',
+      colors: [
+        { color: '#FFF1D4', label: 'Background' },
+        { color: '#317039', label: 'Primary' },
+        { color: '#F1BE49', label: 'Secondary' },
+        { color: '#CC4B24', label: 'Accent' }
+      ]
+    }
+  ];
+
+  return (
+    <Box sx={{ mb: 3 }}>
+      <Typography variant="h6" gutterBottom>
+        Select Theme
+      </Typography>
+      <Grid container spacing={2}>
+        {themeOptions.map((themeOption) => (
+          <Grid item xs={12} sm={4} key={themeOption.value}>
+            <Card 
+              sx={{ 
+                cursor: 'pointer',
+                height: '100%',
+                transition: 'all 0.2s',
+                transform: mode === themeOption.value ? 'scale(1.02)' : 'scale(1)',
+                border: mode === themeOption.value ? `2px solid ${theme.palette.primary.main}` : '1px solid',
+                borderColor: 'divider',
+                boxShadow: mode === themeOption.value ? `0 0 8px ${theme.palette.primary.main}20` : 'none',
+                bgcolor: themeOption.value === 'light' ? '#FFFFFF' : 
+                        themeOption.value === 'dark' ? '#1E1E1E' : 
+                        '#F8EDD9', // Antique White for palette theme
+                color: themeOption.value === 'dark' ? '#FFFFFF' : '#2A2A2A'
+              }}
+              onClick={() => setThemeMode(themeOption.value)}
+            >
+              <CardContent>
+                <Box sx={{ display: 'flex', alignItems: 'center', mb: 1 }}>
+                  <Box sx={{ 
+                    mr: 1.5, 
+                    color: mode === themeOption.value ? 'primary.main' : 'text.secondary'
+                  }}>
+                    {themeOption.icon}
+                  </Box>
+                  <Typography variant="h6" component="h3">
+                    {themeOption.name}
+                  </Typography>
+                </Box>
+                
+                <Typography variant="body2" sx={{ mb: 2, color: themeOption.value === 'dark' ? 'rgba(255,255,255,0.7)' : 'text.secondary' }}>
+                  {themeOption.description}
+                </Typography>
+                
+                <Stack direction="row" spacing={1} sx={{ mt: 2 }}>
+                  {themeOption.colors.map((color, index) => (
+                    <Tooltip key={index} title={color.label}>
+                      <Box sx={{
+                        width: 24,
+                        height: 24,
+                        borderRadius: '4px',
+                        bgcolor: color.color,
+                        border: color.color === '#FFFFFF' ? '1px solid #E0E0E0' : 'none',
+                      }} />
+                    </Tooltip>
+                  ))}
+                </Stack>
+              </CardContent>
+            </Card>
+          </Grid>
+        ))}
+      </Grid>
+    </Box>
+  );
+};
 
 const SettingsPage: React.FC = () => {
   const theme = useTheme();
@@ -63,6 +179,22 @@ const SettingsPage: React.FC = () => {
 
   return (
     <Box sx={{ p: { xs: 2, sm: 3 }, maxWidth: 800, mx: 'auto' }}>
+      {/* Theme Settings */}
+      <Paper sx={{ p: { xs: 2, sm: 3 }, mb: 3 }}>
+        <Box sx={{ mb: 3, display: 'flex', alignItems: 'center', gap: 1 }}>
+          <Typography variant="h5" component="h1">
+            Appearance Settings
+          </Typography>
+          <Tooltip title="Select your preferred theme appearance for the application">
+            <IconButton size="small">
+              <HelpOutlineIcon />
+            </IconButton>
+          </Tooltip>
+        </Box>
+        <ThemeSelector />
+      </Paper>
+
+      {/* Email Settings */}
       <Paper sx={{ p: { xs: 2, sm: 3 }, mb: 3 }}>
         <Box sx={{ mb: 3, display: 'flex', alignItems: 'center', gap: 1 }}>
           <Typography variant="h5" component="h1">

@@ -2,16 +2,18 @@ import React, { createContext, useState, useMemo, useContext, useEffect } from '
 import { ThemeProvider as MuiThemeProvider } from '@mui/material/styles';
 import CssBaseline from '@mui/material/CssBaseline';
 import { PaletteMode } from '@mui/material';
-import getTheme from './theme';
+import getTheme, { ThemeMode } from './theme';
 
 type ThemeContextType = {
-  mode: PaletteMode;
+  mode: ThemeMode;
   toggleColorMode: () => void;
+  setThemeMode: (mode: ThemeMode) => void;
 };
 
 const ThemeContext = createContext<ThemeContextType>({
   mode: 'light',
   toggleColorMode: () => {},
+  setThemeMode: () => {},
 });
 
 export const useThemeContext = () => useContext(ThemeContext);
@@ -22,9 +24,9 @@ interface ThemeProviderProps {
 
 export const ThemeProvider: React.FC<ThemeProviderProps> = ({ children }) => {
   // Get stored theme preference or use system preference
-  const getInitialMode = (): PaletteMode => {
-    const storedMode = localStorage.getItem('themeMode');
-    if (storedMode === 'dark' || storedMode === 'light') {
+  const getInitialMode = (): ThemeMode => {
+    const storedMode = localStorage.getItem('themeMode') as ThemeMode;
+    if (storedMode === 'dark' || storedMode === 'light' || storedMode === 'palette') {
       return storedMode;
     }
     
@@ -36,7 +38,7 @@ export const ThemeProvider: React.FC<ThemeProviderProps> = ({ children }) => {
     return 'light';
   };
 
-  const [mode, setMode] = useState<PaletteMode>(getInitialMode);
+  const [mode, setMode] = useState<ThemeMode>(getInitialMode);
 
   // Update localStorage when mode changes
   useEffect(() => {
@@ -47,7 +49,15 @@ export const ThemeProvider: React.FC<ThemeProviderProps> = ({ children }) => {
     () => ({
       mode,
       toggleColorMode: () => {
-        setMode((prevMode) => (prevMode === 'light' ? 'dark' : 'light'));
+        setMode((prevMode) => {
+          // Cycle through the three modes: light -> dark -> palette -> light
+          if (prevMode === 'light') return 'dark';
+          if (prevMode === 'dark') return 'palette';
+          return 'light';
+        });
+      },
+      setThemeMode: (newMode: ThemeMode) => {
+        setMode(newMode);
       },
     }),
     [mode]
