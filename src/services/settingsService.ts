@@ -23,10 +23,9 @@ Context:
 - My transcribed voice notes about how to respond: "{transcribedText}"
 
 Task: Write a professional and friendly email response that:
-1. References the original email subject and content very succinctly
-2. Incorporates the key points from my transcribed voice notes
-3. Maintains a friendly tone that is short and to the point, not verbose
-4. Sign with {signature}
+1. Incorporates the key points from my transcribed voice notes
+2. Maintains a friendly, empathetic tone that is short and to the point, not verbose
+3. Sign with {signature}
 
 Write the complete email response:`,
   signature: 'Antoine',

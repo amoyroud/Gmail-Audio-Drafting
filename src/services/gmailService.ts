@@ -78,6 +78,13 @@ export const initGmailClient = async (): Promise<void> => {
     return initPromise;
   }
   
+  // Check if we have a valid token before initializing
+  const token = localStorage.getItem(TOKEN_STORAGE_KEY);
+  const expiry = localStorage.getItem(TOKEN_EXPIRY_KEY);
+  if (token && expiry && Date.now() < parseInt(expiry)) {
+    console.log('initGmailClient: Found valid token');
+  }
+  
   isInitializing = true;
   initPromise = new Promise<void>(async (resolve, reject) => {
     try {
@@ -204,10 +211,13 @@ export const signIn = async (): Promise<void> => {
           return;
         } catch (error) {
           console.error('Error using stored token:', error);
-          // Clear invalid tokens
+          // Token has expired or is about to expire
           localStorage.removeItem(TOKEN_STORAGE_KEY);
           localStorage.removeItem(TOKEN_EXPIRY_KEY);
           localStorage.removeItem(USER_EMAIL_KEY);
+          // Set session expired flag before triggering sign out
+          window.sessionStorage.setItem('sessionExpired', 'true');
+          window.dispatchEvent(new Event('gmail_signed_out'));
         }
       } else if (storedToken && tokenExpiry) {
         console.log('Token expired, requesting new token');
@@ -418,37 +428,24 @@ export const moveToRead = async (emailId: string): Promise<{success: boolean, da
  */
 export const signOut = async (): Promise<void> => {
   try {
-    // Clear token from client
+    // Clear token from gapi client
     if (window.gapi?.client) {
       window.gapi.client.setToken(null);
     }
 
-    // Get token before clearing storage
-    const token = localStorage.getItem(TOKEN_STORAGE_KEY);
-
-    // Clear all auth data from localStorage
+    // Clear stored tokens
     localStorage.removeItem(TOKEN_STORAGE_KEY);
     localStorage.removeItem(TOKEN_EXPIRY_KEY);
     localStorage.removeItem(USER_EMAIL_KEY);
 
-    // Reset initialization flag
-    window.googleAuthInitialized = false;
-
-    // Revoke token access if possible
-    if (window.google?.accounts?.oauth2 && token) {
-      try {
-        window.google.accounts.oauth2.revoke(token, () => {
-          console.log('Token revoked successfully');
-        });
-      } catch (revokeError) {
-        console.error('Error revoking token:', revokeError);
-        // Continue with sign out process even if revoke fails
-      }
-    }
-
-    // Notify about sign out
+    // Dispatch sign out event
     window.dispatchEvent(new Event('gmail_signed_out'));
-    console.log('Signed out successfully');
+
+    // Clear initialization flags
+    window.googleAuthInitialized = false;
+    isInitializing = false;
+    initPromise = null;
+
     // Redirect to Google logout page to ensure complete sign out
     window.location.href = 'https://accounts.google.com/logout';
   } catch (error) {
@@ -457,15 +454,37 @@ export const signOut = async (): Promise<void> => {
 };
 
 /**
- * Check if user is signed in with a valid token
+ * Check if user is signed in with a valid token and restore session if valid
  */
 export const isSignedIn = (): boolean => {
-  const token = localStorage.getItem(TOKEN_STORAGE_KEY);
-  const tokenExpiry = localStorage.getItem(TOKEN_EXPIRY_KEY);
-  const now = Date.now();
+  const storedToken = localStorage.getItem(TOKEN_STORAGE_KEY);
+  const expiry = localStorage.getItem(TOKEN_EXPIRY_KEY);
   
-  // Token exists and is not expired
-  return !!token && !!tokenExpiry && parseInt(tokenExpiry) > now;
+  if (!storedToken || !expiry) {
+    return false;
+  }
+  
+  // Check if token is expired or about to expire (within 5 minutes)
+  const expiryTime = parseInt(expiry);
+  const fiveMinutes = 5 * 60 * 1000;
+  const isValid = Date.now() < (expiryTime - fiveMinutes);
+  
+  if (!isValid) {
+    // Clear invalid token
+    localStorage.removeItem(TOKEN_STORAGE_KEY);
+    localStorage.removeItem(TOKEN_EXPIRY_KEY);
+    localStorage.removeItem(USER_EMAIL_KEY);
+    return false;
+  }
+  
+  // Restore token in gapi client if available
+  if (window.gapi?.client) {
+    window.gapi.client.setToken({
+      access_token: storedToken
+    });
+  }
+  
+  return true;
 };
 
 /**

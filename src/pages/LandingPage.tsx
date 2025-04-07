@@ -1,5 +1,5 @@
 import React from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useLocation } from 'react-router-dom';
 import { 
   Box, 
   Button, 
@@ -15,6 +15,7 @@ import {
   Fade,
   Zoom,
   Avatar,
+  Alert,
   keyframes
 } from '@mui/material';
 import MicIcon from '@mui/icons-material/Mic';
@@ -57,6 +58,8 @@ const LandingPage: React.FC = () => {
   const navigate = useNavigate();
   const theme = useTheme();
   const isMobile = useMediaQuery(theme.breakpoints.down('sm'));
+  const location = useLocation();
+  const sessionExpired = location.state?.sessionExpired;
 
   const handleGetStarted = () => {
     navigate('/login');
@@ -66,13 +69,29 @@ const LandingPage: React.FC = () => {
     <Box sx={{ 
       minHeight: '100vh',
       bgcolor: theme.palette.mode === 'dark' ? '#0f172a' : '#f8fafc',
+      position: 'relative',
       backgroundImage: theme.palette.mode === 'dark' 
         ? 'radial-gradient(at 100% 0%, rgba(25, 118, 210, 0.12) 0px, transparent 50%), radial-gradient(at 0% 90%, rgba(66, 66, 255, 0.1) 0px, transparent 50%)'
         : 'radial-gradient(at 100% 0%, rgba(224, 242, 254, 0.8) 0px, transparent 50%), radial-gradient(at 0% 90%, rgba(219, 234, 254, 0.8) 0px, transparent 50%)',
       backgroundAttachment: 'fixed',
-      position: 'relative',
       overflow: 'hidden'
     }}>
+      {sessionExpired && (
+        <Alert 
+          severity="info" 
+          sx={{ 
+            position: 'fixed', 
+            top: 16, 
+            left: '50%', 
+            transform: 'translateX(-50%)', 
+            zIndex: 1000,
+            boxShadow: 3,
+            minWidth: 300
+          }}
+        >
+          Your session has expired. Please sign in again.
+        </Alert>
+      )}
       {/* Modern header with glass effect */}
       <Paper 
         elevation={0} 
@@ -124,28 +143,6 @@ const LandingPage: React.FC = () => {
             </Box>
           </Grid>
           <Grid item>
-            <Button 
-              variant="outlined" 
-              onClick={() => navigate('/login')}
-              size="medium"
-              sx={{ 
-                mr: 2,
-                borderColor: theme.palette.mode === 'dark' 
-                  ? 'rgba(255,255,255,0.2)' 
-                  : 'rgba(0,0,0,0.1)',
-                color: theme.palette.mode === 'dark' ? '#fff' : '#000',
-                borderRadius: '8px',
-                px: 2,
-                '&:hover': {
-                  borderColor: theme.palette.mode === 'dark' 
-                    ? 'rgba(255,255,255,0.5)' 
-                    : 'rgba(0,0,0,0.3)',
-                  backgroundColor: 'transparent'
-                }
-              }}
-            >
-              Login
-            </Button>
             <Button 
               variant="contained" 
               size="medium" 
@@ -488,7 +485,7 @@ const LandingPage: React.FC = () => {
               fontSize: isMobile ? '1rem' : '1.1rem', 
             }}
           >
-            Transform your voice into perfectly crafted emails in three simple steps
+            Transform your voice into perfectly crafted email responses in three simple steps
           </Typography>
         </Box>
 

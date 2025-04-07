@@ -38,7 +38,7 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
   const handleLogout = async () => {
     handleMenuClose();
     await signOut();
-    navigate('/login');
+    navigate('/');
   };
 
   const handleSettingsClick = () => {

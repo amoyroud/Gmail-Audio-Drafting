@@ -55,6 +55,9 @@ interface AudioRecorderProps {
   onDraftSaved?: () => void;
   initialAction?: EmailActionType;
   onActionComplete?: () => void;
+  isRecordingFromParent?: boolean;
+  recordingAction?: EmailActionType | null;
+  onRecordingStateChange?: (isRecording: boolean) => void;
 }
 
 // Common styles for consistency
@@ -79,7 +82,15 @@ const primaryButtonStyles = {
   }
 };
 
-const AudioRecorder: React.FC<AudioRecorderProps> = ({ selectedEmail, onDraftSaved, initialAction, onActionComplete }) => {
+const AudioRecorder: React.FC<AudioRecorderProps> = ({ 
+  selectedEmail, 
+  onDraftSaved, 
+  initialAction, 
+  onActionComplete,
+  isRecordingFromParent,
+  recordingAction,
+  onRecordingStateChange
+}) => {
   const theme = useTheme();
   
   // State to stabilize selectedEmail and prevent flickering
@@ -91,6 +102,27 @@ const AudioRecorder: React.FC<AudioRecorderProps> = ({ selectedEmail, onDraftSav
       setStableEmail(selectedEmail);
     }
   }, [selectedEmail]);
+  
+  // Handle recording state changes from parent
+  useEffect(() => {
+    if (isRecordingFromParent !== undefined) {
+      // If parent wants to start recording and we're not already recording
+      if (isRecordingFromParent && !isRecording) {
+        startRecording();
+      } 
+      // If parent wants to stop recording and we are recording
+      else if (!isRecordingFromParent && isRecording) {
+        stopRecording();
+      }
+    }
+  }, [isRecordingFromParent]);
+  
+  // Update action type based on parent's recording action
+  useEffect(() => {
+    if (recordingAction && recordingAction !== selectedAction) {
+      setSelectedAction(recordingAction);
+    }
+  }, [recordingAction]);
   
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const audioChunksRef = useRef<Blob[]>([]);
@@ -178,23 +210,27 @@ const AudioRecorder: React.FC<AudioRecorderProps> = ({ selectedEmail, onDraftSav
       };
       
       audioChunksRef.current = [];
-      const mediaRecorder = new MediaRecorder(stream, options);
+      setIsRecording(true);
       
-      mediaRecorderRef.current = mediaRecorder;
+      // Notify parent about recording state change
+      if (onRecordingStateChange) {
+        onRecordingStateChange(true);
+      }
+      
+      mediaRecorderRef.current = new MediaRecorder(stream, { mimeType });
       
       // Set a shorter timeslice for mobile devices to improve quality
       const timeslice = isMobile ? 1000 : 10000; // 1 second for mobile, 10 seconds for desktop
       
-      mediaRecorder.start(timeslice);
-      setIsRecording(true);
+      mediaRecorderRef.current.start(timeslice);
       
-      mediaRecorder.ondataavailable = (event) => {
+      mediaRecorderRef.current.ondataavailable = (event) => {
         if (event.data.size > 0) {
           audioChunksRef.current.push(event.data);
         }
       };
       
-      mediaRecorder.onstop = () => {
+      mediaRecorderRef.current.onstop = () => {
         const audioBlob = new Blob(audioChunksRef.current, { type: mimeType || 'audio/webm' });
         setAudioBlob(audioBlob);
         setIsRecording(false);
@@ -211,14 +247,19 @@ const AudioRecorder: React.FC<AudioRecorderProps> = ({ selectedEmail, onDraftSav
   };
 
   const stopRecording = () => {
-    if (mediaRecorderRef.current && isRecording) {
-      try {
-        mediaRecorderRef.current.stop();
-      } catch (error: any) {
-        console.error('Error stopping recording:', error);
-        setError(`Error stopping recording: ${error.message || 'Unknown error'}`);
-      }
+    if (!mediaRecorderRef.current) return;
+    
+    setIsRecording(false);
+    // Notify parent about recording state change
+    if (onRecordingStateChange) {
+      onRecordingStateChange(false);
     }
+    
+    mediaRecorderRef.current.stop();
+    
+    // Release microphone access
+    mediaRecorderRef.current.stream.getTracks().forEach(track => track.stop());
+    mediaRecorderRef.current = null;
   };
   
   const processAudioToText = async (audioBlob: Blob) => {
@@ -878,7 +919,26 @@ const AudioRecorder: React.FC<AudioRecorderProps> = ({ selectedEmail, onDraftSav
                 variant="contained"
                 color="primary"
                 startIcon={selectedAction === 'archive' ? <ArchiveIcon /> : <SendIcon />}
-                onClick={handleSaveDraft}
+                onClick={async () => {
+                  // For archive action, directly call performAction
+                  if (selectedAction === 'archive' && stableEmail) {
+                    try {
+                      setIsPerformingAction(true);
+                      const result = await archiveEmail(stableEmail.id);
+                      setSuccess('Email archived successfully!');
+                      if (onActionComplete) onActionComplete();
+                      setTimeout(() => setSuccess(null), 2000);
+                    } catch (error) {
+                      console.error('Error archiving email:', error);
+                      setError('Failed to archive email. Please try again.');
+                    } finally {
+                      setIsPerformingAction(false);
+                    }
+                  } else {
+                    // For other actions, use the normal flow
+                    handleSaveDraft();
+                  }
+                }}
                 disabled={
                   isPerformingAction || 
                   savingDraft || 

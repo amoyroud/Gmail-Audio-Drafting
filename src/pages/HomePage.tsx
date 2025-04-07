@@ -15,10 +15,26 @@ import {
   TextField,
   InputAdornment,
   Divider,
-  ListItemButton
+  ListItemButton,
+  ListItemText,
+  Avatar,
+  Tooltip
 } from '@mui/material';
+// Icons
 import SearchIcon from '@mui/icons-material/Search';
 import ArchiveIcon from '@mui/icons-material/Archive';
+import StopIcon from '@mui/icons-material/Stop';
+import EmailIcon from '@mui/icons-material/Email';
+import MicIcon from '@mui/icons-material/Mic';
+import SmartToyIcon from '@mui/icons-material/SmartToy';
+import CancelScheduleSendIcon from '@mui/icons-material/CancelScheduleSend';
+import BookmarkIcon from '@mui/icons-material/Bookmark';
+import ArrowBackIcon from '@mui/icons-material/ArrowBack';
+import KeyboardArrowUpIcon from '@mui/icons-material/KeyboardArrowUp';
+import KeyboardArrowDownIcon from '@mui/icons-material/KeyboardArrowDown';
+import AccessTimeIcon from '@mui/icons-material/AccessTime';
+import AssignmentIcon from '@mui/icons-material/Assignment';
+import TaskAltIcon from '@mui/icons-material/TaskAlt';
 
 // Services
 import { archiveEmail, fetchEmails, getEmailById, getTotalEmailCount, moveToRead, type EmailsResponse } from '../services/gmailService';
@@ -26,10 +42,10 @@ import { Email, EmailActionType, TodoTask } from '../types/types';
 import AudioRecorder from '../components/AudioRecorder';
 import ActionSelector from '../components/ActionSelector';
 import TodoList from '../components/TodoList';
-import AssignmentIcon from '@mui/icons-material/Assignment';
 import GmailAuth from '../components/GmailAuth';
 import EmptyState from '../components/EmptyState';
 import { useEmail } from '../context/EmailContext';
+import { fixEncodingIssues } from '../utils/textFormatter';
 
 interface HomePageProps {}
 
@@ -48,6 +64,8 @@ const HomePage: React.FC<HomePageProps> = () => {
   const [selectedEmailIndex, setSelectedEmailIndex] = useState<number>(0);
   const [searchQuery, setSearchQuery] = useState<string>('');
   const [selectedAction, setSelectedAction] = useState<EmailActionType>('archive');
+  const [isRecording, setIsRecording] = useState(false);
+  const [recordingAction, setRecordingAction] = useState<EmailActionType | null>(null);
   const [tasks, setTasks] = useState<TodoTask[]>([]);
   const [isActionInProgress, setIsActionInProgress] = useState(false);
   const [actionSuccess, setActionSuccess] = useState<string | null>(null);
@@ -102,8 +120,103 @@ const HomePage: React.FC<HomePageProps> = () => {
     })
     .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
 
+  // Helper to get initial avatar text
+  const getAvatarInitial = (from: string | {name?: string, email: string}) => {
+    if (typeof from === 'string') {
+      return from.charAt(0).toUpperCase();
+    } 
+    
+    if (from && typeof from === 'object') {
+      if (from.name && from.name.length > 0) {
+        return from.name.charAt(0).toUpperCase();
+      }
+      if (from.email && from.email.length > 0) {
+        return from.email.charAt(0).toUpperCase();
+      }
+    }
+    
+    return '?';
+  };
+
+  // Format email body with proper spacing and handling encoding issues
+  const formatEmailBody = (body: string) => {
+    if (!body) return null;
+    
+    // Apply comprehensive encoding fixes from our utility
+    const processedBody = fixEncodingIssues(body);
+    
+    // Split by lines and format each line
+    return processedBody.split('\n').map((line, i) => {
+      // Handle quoted text (lines starting with '>')
+      if (line.trim().startsWith('>')) {
+        return (
+          <Typography 
+            key={i} 
+            variant="body2" 
+            component="div"
+            sx={{ 
+              pl: 2, 
+              borderLeft: '2px solid', 
+              borderColor: 'divider',
+              color: 'text.secondary',
+              my: 0.5,
+              fontFamily: '"Roboto", "Helvetica", "Arial", sans-serif',
+              fontSize: '0.9rem',
+              whiteSpace: 'pre-wrap'
+            }}
+          >
+            {line.replace(/^>\s*/, '')}
+          </Typography>
+        );
+      }
+      
+      // Handle email signatures (lines with -- or __)
+      if (line.trim() === '--' || line.trim() === '__') {
+        return (
+          <Box key={i}>
+            <Divider sx={{ my: 1.5 }} />
+            <Typography
+              variant="body2"
+              sx={{
+                color: 'text.secondary',
+                fontStyle: 'italic'
+              }}
+            >
+              {/* Signature section */}
+            </Typography>
+          </Box>
+        );
+      }
+      
+      // Regular text
+      return line.trim() === '' ? 
+        <Box key={i} sx={{ height: '0.75em' }} /> : 
+        <Typography 
+          key={i} 
+          variant="body2" 
+          sx={{ 
+            mb: 1,
+            fontFamily: '"Roboto", "Helvetica", "Arial", sans-serif',
+            wordBreak: 'break-word',
+            lineHeight: 1.6,
+            whiteSpace: 'pre-wrap'
+          }}
+        >
+          {line}
+        </Typography>;
+    });
+  };
+
+  // Check if email is unread
+  const isUnread = (email: Email) => {
+    // The Email interface has 'unread' property but the actual emails
+    // might have either 'unread' or 'labelIds' for determining read status
+    // @ts-ignore - ignore TypeScript error since we know the email object shape
+    return email.unread || (email.labelIds && email.labelIds.includes('UNREAD')) || false;
+  };
+
   // Use useCallback to prevent recreating this function on every render
-  const handleEmailClick = useCallback(async (email: Email) => {
+  const handleEmailClick = useCallback(async (email: Email, index?: number) => {
     try {
       // Don't unselect an email when clicking it again
       // This prevents the flickering effect
@@ -225,6 +338,8 @@ const HomePage: React.FC<HomePageProps> = () => {
     }
   };
 
+
+
   useEffect(() => {
     const handleKeyDown = async (event: KeyboardEvent) => {
       if (!filteredEmails || filteredEmails.length === 0) return;
@@ -261,14 +376,6 @@ const HomePage: React.FC<HomePageProps> = () => {
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [filteredEmails, selectedEmailIndex]);
 
-  // This effect is not needed and creates a circular dependency
-  // We've removed it to prevent flickering
-  // useEffect(() => {
-  //  if (selectedEmail) {
-  //    handleEmailClick(selectedEmail);
-  //  }
-  // }, [selectedEmail, handleEmailClick]);
-
   useEffect(() => {
     if (filteredEmails && filteredEmails.length > selectedEmailIndex) {
       const newEmail = filteredEmails[selectedEmailIndex];
@@ -280,261 +387,200 @@ const HomePage: React.FC<HomePageProps> = () => {
 
   if (!isAuthenticated) {
     return (
-      <Box sx={{ 
-        maxWidth: 600, 
-        mx: 'auto', 
-        mt: 8,
-        p: 3,
-        display: 'flex',
-        flexDirection: 'column',
-        alignItems: 'center',
-        textAlign: 'center'
-      }}>
-        <Box 
-          component="img"
-          src="/logo.png"
-          alt="Audio Email Assistant Logo"
-          sx={{ 
-            width: 80, 
-            height: 80, 
-            mb: 3,
-            opacity: 0.9
-          }}
-        />
-        <Typography 
-          variant="h4" 
-          gutterBottom
-          sx={{ 
-            fontWeight: 600,
-            mb: 2,
-            background: 'linear-gradient(45deg, #2196F3 30%, #21CBF3 90%)',
-            WebkitBackgroundClip: 'text',
-            WebkitTextFillColor: 'transparent'
-          }}
-        >
-          Audio Email Assistant
-        </Typography>
-        <Typography variant="body1" sx={{ mb: 4, maxWidth: 450, color: 'text.secondary' }}>
-          Record your voice to draft email responses quickly and efficiently. Sign in with your Gmail account to get started.
-        </Typography>
-        <GmailAuth onAuthStateChange={handleAuthStateChange} />
-      </Box>
-    );
-  }
-
-  if (loading) {
-    return (
-      <Box sx={{ display: 'flex', justifyContent: 'center', mt: 4 }}>
-        <CircularProgress />
+      <Box sx={{ display: 'flex', flexDirection: 'column', height: '100vh', overflow: 'hidden', bgcolor: 'background.default' }}>
+        <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', flexGrow: 1, p: { xs: 2, sm: 4 } }}>
+          <GmailAuth onAuthStateChange={handleAuthStateChange} />
+        </Box>
       </Box>
     );
   }
 
   return (
-    <Box sx={{ p: { xs: 2, sm: 3 }, maxWidth: '1600px', mx: 'auto' }}>
-      {error && (
-        <Alert severity="error" sx={{ mb: 3 }}>
-          {error}
-        </Alert>
-      )}
-
-      <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', md: '1fr 320px' }, gap: 3 }}>
-        <Box sx={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
-          {/* Search Bar */}
-          <Paper
-            elevation={0}
-            sx={{
-              p: 1,
-              borderRadius: '12px',
-              border: '1px solid',
-              borderColor: 'divider',
-              display: 'flex',
-              alignItems: 'center'
-            }}
+    <Box sx={{ 
+      display: 'flex', 
+      flexDirection: 'column', 
+      height: '100vh', 
+      overflow: 'hidden',
+      position: 'fixed',
+      width: '100%',
+      top: 0,
+      left: 0
+    }}>
+      {/* Top Search Bar */}
+      <Paper 
+        elevation={1} 
+        sx={{ 
+          px: 2, 
+          py: 1.5, 
+          display: 'flex', 
+          alignItems: 'center',
+          borderRadius: 0,
+          zIndex: 5,
+          flexShrink: 0
+        }}
+      >
+        {isMobile && selectedEmail && (
+          <IconButton 
+            sx={{ mr: 1 }} 
+            onClick={() => setSelectedEmail(null)}
           >
-            <TextField
-              fullWidth
-              placeholder="Search emails..."
-              variant="standard"
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              InputProps={{
-                disableUnderline: true,
-                startAdornment: (
-                  <InputAdornment position="start">
-                    <SearchIcon color="action" />
-                  </InputAdornment>
-                ),
-              }}
-              sx={{
-                mx: 1,
-                '& .MuiInputBase-root': {
-                  height: 40,
-                }
-              }}
-            />
-          </Paper>
+            <ArrowBackIcon />
+          </IconButton>
+        )}
+        <TextField
+          fullWidth
+          placeholder="Search emails..."
+          variant="outlined"
+          size="small"
+          value={searchQuery}
+          onChange={(e) => setSearchQuery(e.target.value)}
+          InputProps={{
+            startAdornment: (
+              <InputAdornment position="start">
+                <SearchIcon />
+              </InputAdornment>
+            ),
+          }}
+          sx={{ 
+            maxWidth: '600px',
+            '& .MuiOutlinedInput-root': {
+              borderRadius: '24px',
+            }
+          }}
+        />
+      </Paper>
 
-          {/* Action Controls - now positioned ABOVE the email list */}
-          <Paper 
-            elevation={0}
-            sx={{ 
-              p: { xs: 2, sm: 3 }, 
-              borderRadius: '12px',
-              border: '1px solid',
-              borderColor: 'divider',
-              backgroundColor: theme.palette.mode === 'dark' ? 'rgba(255,255,255,0.03)' : 'rgba(0,0,0,0.01)',
-              width: '100%',
-              display: 'flex',
-              flexDirection: 'column',
-              mb: 3
-            }}
-          >
-            <Typography variant="h6" sx={{ mb: 2, fontWeight: 600 }}>
-              Email Response
-            </Typography>
-            
-            {actionSuccess && (
-              <Alert severity="success" sx={{ mb: 2 }}>
-                {actionSuccess}
-              </Alert>
-            )}
-            
-            {selectedEmail ? (
-            (selectedAction === 'speech-to-text' || selectedAction === 'ai-draft' || selectedAction === 'quick-decline') ? (
-              <AudioRecorder 
-                selectedEmail={selectedEmail} 
-                initialAction={selectedAction}
-                onActionComplete={() => setSelectedAction('archive')}
-              />
-            ) : (
-              <EmptyState 
-                type="noSelection" 
-                message="Select an action mode below"
-                icon="inbox"
-              />
-            )
-          ) : (
-            <EmptyState 
-              type="noSelection" 
-              message="Select an email from the list below"
-              icon="inbox"
-            />
-          )}
-        </Paper>
-
-        {/* Action Selector Bar - now between email response and list */}
+      {/* Main Content Area - Gmail Layout */}
+      <Box sx={{ 
+        display: 'flex', 
+        height: 'calc(100vh - 64px - 60px)', // Subtract header and action bar heights
+        overflow: 'hidden',
+        width: '100%',
+      }}>
+        {/* Email List - Left Side */}
         <Paper
           elevation={0}
           sx={{
-            p: 3,
-            mb: 3,
-            borderRadius: '12px',
-            border: '1px solid',
-            borderColor: 'divider',
-            backgroundColor: theme.palette.mode === 'dark' ? 'rgba(255,255,255,0.03)' : 'rgba(0,0,0,0.01)',
-          }}
-        >
-          <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
-            <Typography variant="h6" sx={{ mb: 2, fontWeight: 600, color: theme.palette.text.primary }}>
-              Select Action Mode
-            </Typography>
-            <ActionSelector
-              selectedAction={selectedAction}
-              onActionSelect={handleActionSelect}
-              onActionExecute={(action) => {
-                if (selectedEmail) {
-                  handleEmailAction(action, selectedEmail);
-                }
-              }}
-              disabled={isActionInProgress}
-            />
-          </Box>
-        </Paper>
-
-        {/* Email List - now positioned at the bottom */}
-        <Paper 
-          elevation={0}
-          sx={{ 
-            width: '100%',
-            maxHeight: 'calc(100vh - 550px)', /* Adjust height to fit screen with other elements */
-            minHeight: '300px',
+            width: { xs: isMobile && selectedEmail ? 0 : '100%', sm: '300px', md: '350px' },
+            display: { xs: isMobile && selectedEmail ? 'none' : 'flex', sm: 'flex' },
+            flexDirection: 'column',
             overflow: 'auto',
-            borderRadius: '12px',
-            border: '1px solid',
-            borderColor: 'divider'
+            overflowX: 'hidden',
+            borderRadius: 0,
+            borderRight: '1px solid',
+            borderColor: 'divider',
+            height: '100%',
+            maxHeight: '100%',
+            flexShrink: 0
           }}
-          tabIndex={0}
         >
-          <List sx={{ p: 0 }}>
-            {loading ? (
-              <Box sx={{ p: 2 }}>
-                <CircularProgress />
-              </Box>
-            ) : error ? (
-              <Box sx={{ p: 2 }}>
-                <Typography color="error">{error}</Typography>
-              </Box>
-            ) : filteredEmails.length === 0 ? (
-              <Box sx={{ p: 2 }}>
-                <Typography>No emails found</Typography>
-              </Box>
-            ) : (
-              filteredEmails.map((email, index) => (
+          {loading ? (
+            <Box sx={{ display: 'flex', justifyContent: 'center', p: 4 }}>
+              <CircularProgress />
+            </Box>
+          ) : error ? (
+            <Box sx={{ p: 2 }}>
+              <Alert severity="error">{error}</Alert>
+            </Box>
+          ) : filteredEmails.length === 0 ? (
+            <Box sx={{ p: 3, textAlign: 'center' }}>
+              <Typography variant="body1" color="text.secondary">
+                No emails found
+              </Typography>
+            </Box>
+          ) : (
+            <List sx={{ p: 0, width: '100%' }}>
+              {filteredEmails.map((email, index) => (
                 <React.Fragment key={email.id}>
-                  {index > 0 && <Divider />}
                   <ListItem
                     disablePadding
                     sx={{
-                      display: 'flex',
-                      flexDirection: 'column',
-                      alignItems: 'stretch',
                       borderBottom: '1px solid',
                       borderColor: 'divider'
                     }}
                   >
-                    <ListItemButton 
+                    <ListItemButton
+                      selected={selectedEmailIndex === index}
                       onClick={() => {
                         setSelectedEmailIndex(index);
                         handleEmailClick(email);
                       }}
-                      selected={index === selectedEmailIndex}
                       sx={{
-                        p: 2,
-                        position: 'relative',
+                        py: 1.8,
+                        px: 2,
+                        backgroundColor: index % 2 === 0
+                          ? 'transparent'
+                          : theme.palette.mode === 'dark' 
+                            ? 'rgba(255, 255, 255, 0.03)' 
+                            : 'rgba(0, 0, 0, 0.02)',
                         transition: 'all 0.2s ease',
-                        minHeight: '100px',
-                        '&:hover': {
-                          '& .actions': {
-                            opacity: 1
-                          }
-                        },
                         '&.Mui-selected': {
-                          bgcolor: 'action.selected',
-                          p: 3,
-                          minHeight: '300px',
-                          '&:hover': {
-                            bgcolor: 'action.selected'
+                          backgroundColor: theme.palette.mode === 'dark' 
+                            ? 'rgba(144, 202, 249, 0.16)' 
+                            : 'rgba(33, 150, 243, 0.08)',
+                          borderLeft: '3px solid',
+                          borderColor: 'primary.main',
+                          pl: 1.7, // Adjust padding to accommodate the border
+                        },
+                        '&:hover': {
+                          backgroundColor: theme.palette.mode === 'dark' 
+                            ? 'rgba(255, 255, 255, 0.05)' 
+                            : 'rgba(0, 0, 0, 0.04)',
+                          '.actions': {
+                            opacity: 1
                           }
                         }
                       }}
                     >
                       <Box sx={{ width: '100%' }}>
-                        {/* Header */}
-                        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 1 }}>
+                        {/* From and date */}
+                        <Box sx={{
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'space-between',
+                          mb: 0.7
+                        }}>
+                          <Box sx={{ display: 'flex', alignItems: 'center', maxWidth: '70%' }}>
+                            {!isUnread(email) && (
+                              <Box 
+                                component="span" 
+                                sx={{ 
+                                  width: 8, 
+                                  height: 8, 
+                                  borderRadius: '50%', 
+                                  bgcolor: 'primary.main', 
+                                  display: 'inline-block', 
+                                  mr: 1,
+                                  flexShrink: 0
+                                }} 
+                              />
+                            )}
+                            <Typography
+                              variant="body2"
+                              sx={{
+                                fontWeight: !isUnread(email) ? 600 : 500,
+                                color: !isUnread(email) ? 'text.primary' : 'text.secondary',
+                                whiteSpace: 'nowrap',
+                                overflow: 'hidden',
+                                textOverflow: 'ellipsis'
+                              }}
+                            >
+                              {typeof email.from === 'string' ? email.from : email.from.name || email.from.email}
+                            </Typography>
+                          </Box>
                           <Typography
-                            variant="body1"
-                            sx={{
-                              fontWeight: email.unread ? 600 : 400,
-                              color: email.unread ? 'text.primary' : 'text.secondary'
-                            }}
-                          >
-                            {typeof email.from === 'string' ? email.from : email.from.email}
-                          </Typography>
-                          <Typography
-                            variant="body2"
+                            variant="caption"
                             color="text.secondary"
-                            sx={{ ml: 'auto' }}
+                            sx={{
+                              fontWeight: !isUnread(email) ? 500 : 400, 
+                              ml: 1,
+                              flexShrink: 0,
+                              fontSize: '0.7rem',
+                              bgcolor: !isUnread(email) ? (theme.palette.mode === 'dark' ? 'rgba(0, 0, 0, 0.2)' : 'rgba(0, 0, 0, 0.05)') : 'transparent',
+                              px: !isUnread(email) ? 0.8 : 0,
+                              py: !isUnread(email) ? 0.3 : 0,
+                              borderRadius: 1
+                            }}
                           >
                             {formatDate(email.date)}
                           </Typography>
@@ -542,44 +588,36 @@ const HomePage: React.FC<HomePageProps> = () => {
 
                         {/* Subject */}
                         <Typography
-                          variant="body1"
+                          variant="body2"
                           sx={{
-                            fontWeight: 600,
-                            mb: 2,
-                            color: 'text.primary'
+                            fontWeight: !isUnread(email) ? 500 : 400,
+                            mb: 0.7,
+                            color: !isUnread(email) ? 'text.primary' : 'text.secondary',
+                            overflow: 'hidden',
+                            textOverflow: 'ellipsis',
+                            whiteSpace: 'nowrap',
+                            letterSpacing: !isUnread(email) ? '0.01em' : 'normal'
                           }}
                         >
                           {email.subject}
                         </Typography>
 
-                        {/* Content */}
-                        {index === selectedEmailIndex ? (
-                          <Typography
-                            variant="body1"
-                            sx={{
-                              color: 'text.primary',
-                              whiteSpace: 'pre-wrap',
-                              lineHeight: 1.7,
-                              mt: 2
-                            }}
-                          >
-                            {email.body}
-                          </Typography>
-                        ) : (
-                          <Typography
-                            variant="body2"
-                            sx={{
-                              color: 'text.secondary',
-                              display: '-webkit-box',
-                              WebkitLineClamp: 2,
-                              WebkitBoxOrient: 'vertical',
-                              overflow: 'hidden',
-                              textOverflow: 'ellipsis'
-                            }}
-                          >
-                            {email.snippet}
-                          </Typography>
-                        )}
+                        {/* Snippet */}
+                        <Typography
+                          variant="body2"
+                          color="text.secondary"
+                          sx={{
+                            overflow: 'hidden',
+                            textOverflow: 'ellipsis',
+                            whiteSpace: 'nowrap',
+                            fontSize: '0.8rem',
+                            opacity: 0.85,
+                            height: '1.2em', // Fixed height for consistent spacing
+                            lineHeight: 1.2
+                          }}
+                        >
+                          {email.snippet}
+                        </Typography>
                       </Box>
 
                       {/* Actions */}
@@ -587,8 +625,8 @@ const HomePage: React.FC<HomePageProps> = () => {
                         className="actions"
                         sx={{
                           position: 'absolute',
-                          right: 16,
-                          top: 16,
+                          right: 8,
+                          top: 8,
                           display: 'flex',
                           gap: 1,
                           opacity: { xs: 1, sm: 0 },
@@ -604,41 +642,323 @@ const HomePage: React.FC<HomePageProps> = () => {
                           disabled={archiving === email.id}
                         >
                           {archiving === email.id ? (
-                            <CircularProgress size={20} />
+                            <CircularProgress size={16} />
                           ) : (
-                            <ArchiveIcon />
+                            <ArchiveIcon fontSize="small" />
                           )}
                         </IconButton>
                       </Box>
                     </ListItemButton>
-
                   </ListItem>
                 </React.Fragment>
-              ))
-            )}
-          </List>
-          {nextPageToken && !loading && (
-            <Box sx={{ display: 'flex', justifyContent: 'center', p: 2 }}>
-              <Button
-                variant="outlined"
-                onClick={() => fetchEmailsList(nextPageToken)}
-                sx={{ textTransform: 'none' }}
-              >
-                Load More
-              </Button>
-            </Box>
+              ))}
+            </List>
           )}
         </Paper>
-        </Box>
 
-        {/* Task List Panel */}
-        <Box sx={{ display: { xs: 'none', md: 'block' } }}>
-          <TodoList
-            tasks={tasks}
-            onTaskComplete={handleTaskComplete}
-            onTaskDelete={handleTaskDelete}
-          />
-        </Box>
+        {/* Email Content + Recorder - Right Side */}
+        {(selectedEmail || !isMobile) && (
+          <Box sx={{ 
+            flexGrow: 1, 
+            display: 'flex', 
+            flexDirection: 'column',
+            overflow: 'hidden',
+            height: '100%',
+            p: 0
+          }}>
+            {actionSuccess && (
+              <Alert 
+                severity="success" 
+                sx={{ m: 2 }} 
+                onClose={() => setActionSuccess(null)}
+              >
+                {actionSuccess}
+              </Alert>
+            )}
+
+            {selectedEmail ? (
+              <>
+                {/* Email Header */}
+                <Paper
+                  elevation={0}
+                  sx={{
+                    p: 3,
+                    borderRadius: 0,
+                    borderBottom: '1px solid',
+                    borderColor: 'divider',
+                    bgcolor: theme.palette.mode === 'dark' ? 'rgba(255, 255, 255, 0.03)' : 'rgba(0, 0, 0, 0.02)',
+                    flexShrink: 0
+                  }}
+                >
+                  <Typography variant="h6" sx={{ fontWeight: 600, mb: 1.5 }}>
+                    {selectedEmail.subject}
+                  </Typography>
+                  <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 1 }}>
+                    <Box sx={{ display: 'flex', alignItems: 'center' }}>
+                      <Avatar 
+                        sx={{ 
+                          width: 32, 
+                          height: 32, 
+                          bgcolor: 'primary.main',
+                          mr: 1.5,
+                          fontSize: '0.875rem' 
+                        }}
+                      >
+                        {getAvatarInitial(selectedEmail.from)}
+                      </Avatar>
+                      <Box>
+                        <Typography variant="body2" sx={{ fontWeight: 500, lineHeight: 1.2 }}>
+                          {typeof selectedEmail.from === 'string' ? selectedEmail.from : 
+                            selectedEmail.from.name ? selectedEmail.from.name : selectedEmail.from.email}
+                        </Typography>
+                        {selectedEmail.from.email && (
+                          <Typography variant="caption" color="text.secondary" sx={{ lineHeight: 1 }}>
+                            {typeof selectedEmail.from === 'string' ? '' : selectedEmail.from.email}
+                          </Typography>
+                        )}
+                      </Box>
+                    </Box>
+                    <Typography 
+                      variant="body2" 
+                      color="text.secondary"
+                      sx={{ 
+                        display: 'flex',
+                        alignItems: 'center',
+                        '& svg': { ml: 0.5, opacity: 0.7, fontSize: '1rem' }
+                      }}
+                    >
+                      {formatDate(selectedEmail.date)}
+                      <AccessTimeIcon fontSize="small" />
+                    </Typography>
+                  </Box>
+                </Paper>
+
+                {/* Email Content */}
+                <Box sx={{ p: 3, flexGrow: 1, overflow: 'auto', maxHeight: 'calc(100% - 180px)' }}>
+                  {selectedEmail.body ? (
+                    <Box component="div">
+                      {formatEmailBody(selectedEmail.body)}
+                    </Box>
+                  ) : (
+                    <Typography color="text.secondary">
+                      {selectedEmail.snippet}
+                    </Typography>
+                  )}
+                </Box>
+
+                {/* Audio Recorder Component */}
+                <Box sx={{ p: 2, flexShrink: 0 }}>
+
+                  <AudioRecorder 
+                    selectedEmail={selectedEmail}
+                    initialAction={selectedAction}
+                    onActionComplete={() => {
+                      setSelectedEmail(null);
+                      setSelectedEmailIndex(0); // Use 0 instead of null to fix type error
+                      setIsRecording(false);
+                      setRecordingAction(null);
+                      // Refresh emails after action if needed
+                      fetchEmailsList();
+                    }}
+                    isRecordingFromParent={isRecording}
+                    recordingAction={recordingAction}
+                    onRecordingStateChange={(recording) => {
+                      setIsRecording(recording);
+                      if (!recording) {
+                        setRecordingAction(null);
+                      }
+                    }}
+                  />
+                </Box>
+              </>
+            ) : (
+              <Box sx={{ 
+                display: 'flex', 
+                flexDirection: 'column', 
+                alignItems: 'center', 
+                justifyContent: 'center',
+                height: '100%',
+                p: 4
+              }}>
+                <EmptyState 
+                  type="noSelection"
+                  message="Select an email from the list to get started."
+                  icon="email"
+                />
+              </Box>
+            )}
+          </Box>
+        )}
+      </Box>
+
+      {/* Fixed Action Bar at Bottom */}
+      <Box
+        sx={{
+          position: 'absolute',
+          bottom: 0,
+          left: 0,
+          width: '100%',
+          height: '60px',
+          zIndex: 10,
+          backgroundColor: theme.palette.background.paper,
+          borderTop: '1px solid',
+          borderColor: 'divider',
+          display: 'flex',
+          justifyContent: 'center',
+          alignItems: 'center',
+          gap: 2,
+          padding: '0 16px'
+        }}
+      >
+        {/* Speech-to-Text Button */}
+        {!selectedEmail ? (
+          <Tooltip title="Select an email first">
+            <Button 
+              variant="contained" 
+              color="primary"
+              startIcon={<MicIcon />}
+              disabled={true}
+            >
+              Speech-to-Text
+            </Button>
+          </Tooltip>
+        ) : (
+          <Tooltip title={isRecording && recordingAction === 'speech-to-text' ? "Click to stop recording" : "Record Speech to Text"}>
+            <Button 
+              variant="contained" 
+              color={isRecording && recordingAction === 'speech-to-text' ? "error" : "primary"}
+              startIcon={isRecording && recordingAction === 'speech-to-text' ? <StopIcon /> : <MicIcon />}
+              onClick={() => {
+                if (isRecording && recordingAction === 'speech-to-text') {
+                  // Stop recording
+                  setIsRecording(false);
+                  setRecordingAction(null);
+                  // The AudioRecorder component will handle the stop recording logic
+                } else if (!isRecording) {
+                  // Start recording for speech-to-text
+                  setSelectedAction('speech-to-text');
+                  setIsRecording(true);
+                  setRecordingAction('speech-to-text');
+                }
+              }}
+              disabled={isRecording && recordingAction !== 'speech-to-text'}
+            >
+              {isRecording && recordingAction === 'speech-to-text' ? "Stop Recording" : "Speech-to-Text"}
+            </Button>
+          </Tooltip>
+        )}
+
+        {/* AI Draft Button */}
+        {!selectedEmail ? (
+          <Tooltip title="Select an email first">
+            <Button 
+              variant="outlined"
+              startIcon={<SmartToyIcon />}
+              disabled={true}
+            >
+              AI Draft
+            </Button>
+          </Tooltip>
+        ) : (
+          <Tooltip title={isRecording && recordingAction === 'ai-draft' ? "Click to stop recording" : "Generate AI Draft"}>
+            <Button 
+              variant="outlined"
+              color={isRecording && recordingAction === 'ai-draft' ? "error" : "primary"}
+              startIcon={isRecording && recordingAction === 'ai-draft' ? <StopIcon /> : <SmartToyIcon />}
+              onClick={() => {
+                if (isRecording && recordingAction === 'ai-draft') {
+                  setIsRecording(false);
+                  setRecordingAction(null);
+                } else if (!isRecording) {
+                  setSelectedAction('ai-draft');
+                  setIsRecording(true);
+                  setRecordingAction('ai-draft');
+                }
+              }}
+              disabled={isRecording && recordingAction !== 'ai-draft'}
+            >
+              {isRecording && recordingAction === 'ai-draft' ? "Stop Recording" : "AI Draft"}
+            </Button>
+          </Tooltip>
+        )}
+
+        {/* Quick Decline Button */}
+        <Tooltip title="Quick Decline">
+          {!selectedEmail ? (
+            <span>
+              <Button 
+                variant="outlined"
+                startIcon={<CancelScheduleSendIcon />}
+                disabled={true}
+              >
+                Quick Decline
+              </Button>
+            </span>
+          ) : (
+            <Button 
+              variant="outlined"
+              startIcon={<CancelScheduleSendIcon />}
+              onClick={() => setSelectedAction('quick-decline')}
+            >
+              Quick Decline
+            </Button>
+          )}
+        </Tooltip>
+
+        {/* Move to Read Button */}
+        <Tooltip title="Move to Read">
+          {!selectedEmail || isActionInProgress ? (
+            <span>
+              <Button 
+                variant="outlined"
+                startIcon={<BookmarkIcon />}
+                disabled={true}
+              >
+                Move to Read
+              </Button>
+            </span>
+          ) : (
+            <Button 
+              variant="outlined"
+              startIcon={<BookmarkIcon />}
+              onClick={() => handleActionSelect('move-to-read')}
+            >
+              Move to Read
+            </Button>
+          )}
+        </Tooltip>
+
+        {/* Archive Button */}
+        <Tooltip title="Archive">
+          <span>
+            <Button
+              variant="outlined"
+              color="primary"
+              startIcon={<ArchiveIcon />}
+              disabled={!selectedEmail}
+              onClick={() => {
+                if (selectedEmail) handleArchive(selectedEmail.id);
+              }}
+            >
+              Archive
+            </Button>
+          </span>
+        </Tooltip>
+
+        {/* Task Actions Button */}
+        <Tooltip title="Create Task">
+          <span>
+            <Button
+              variant="outlined"
+              startIcon={<TaskAltIcon />}
+              disabled={!selectedEmail}
+              onClick={() => {setSelectedAction('task');
+              }}
+            >
+              Task
+            </Button>
+          </span>
+        </Tooltip>
       </Box>
     </Box>
   );

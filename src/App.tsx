@@ -62,8 +62,11 @@ const ProtectedRoute = ({ children }: { children: React.ReactNode }) => {
   }
 
   if (!authenticated) {
-    console.log('ProtectedRoute: Not authenticated, redirecting to login');
-    return <Navigate to="/login" replace />;
+    console.log('ProtectedRoute: Not authenticated, redirecting to landing');
+    // Pass state to indicate if this was due to session expiry
+    const state = window.sessionStorage.getItem('sessionExpired') ? { sessionExpired: true } : undefined;
+    window.sessionStorage.removeItem('sessionExpired'); // Clear the flag
+    return <Navigate to="/" state={state} replace />;
   }
 
   console.log('ProtectedRoute: Authenticated, rendering children');
