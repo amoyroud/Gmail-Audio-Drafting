@@ -141,7 +141,7 @@ const AudioRecorder: React.FC<AudioRecorderProps> = ({
   const [editMode, setEditMode] = useState(false);
   
   // Action mode state
-  const [selectedAction, setSelectedAction] = useState<EmailActionType>(initialAction || 'ai-draft');
+  const [selectedAction, setSelectedAction] = useState<EmailActionType>(initialAction || 'speech-to-text');
   const [isPerformingAction, setIsPerformingAction] = useState(false);
   
   // Get templates from settings
@@ -163,8 +163,22 @@ const AudioRecorder: React.FC<AudioRecorderProps> = ({
       setSelectedTemplateId('');
       setSuccess(null);
       setError(null);
+      
+      // Automatically start recording when speech-to-text is selected
+      if (initialAction === 'speech-to-text' && !isRecording) {
+        // Warm-up phase - initialize microphone before recording
+        // Small delay to ensure UI is ready and permissions are granted
+        setIsWarmingUp(true);
+        setTimeout(() => {
+          // Only start recording if still on speech-to-text action
+          if (selectedAction === 'speech-to-text') {
+            setIsWarmingUp(false);
+            startRecording();
+          }
+        }, 800); // 800ms warm-up time
+      }
     }
-  }, [initialAction]);
+  }, [initialAction, selectedAction]);
 
   useEffect(() => {
     if (selectedAction !== 'quick-decline') {
@@ -172,95 +186,123 @@ const AudioRecorder: React.FC<AudioRecorderProps> = ({
     }
   }, [selectedAction]);
 
+  // Add state for warm-up phase
+  const [isWarmingUp, setIsWarmingUp] = useState(false);
+
   const startRecording = async () => {
+    if (isRecording) return;
+    
     try {
-      const stream = await navigator.mediaDevices.getUserMedia({ 
-        audio: {
-          echoCancellation: true,
-          noiseSuppression: true,
-          autoGainControl: true
-        } 
-      });
+      setError(null);
+      console.log('Starting recording...');
       
-      // Detect if user is on mobile
-      const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
-      console.log('Device detected as:', isMobile ? 'mobile' : 'desktop');
+      // Request microphone access first
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
       
-      // Use different MIME type priorities based on device type
-      const mimeTypesToTry = isMobile ? MOBILE_PREFERRED_MIME_TYPES : SUPPORTED_MIME_TYPES;
-      
-      // Find the first supported MIME type
-      let mimeType = '';
-      for (const type of mimeTypesToTry) {
-        if (MediaRecorder.isTypeSupported(type)) {
-          mimeType = type;
-          break;
-        }
-      }
-      
-      if (!mimeType) {
-        console.warn('No supported MIME type found, using default');
-      } else {
-        console.log('Selected MIME type:', mimeType);
-      }
-      
-      // Initialize with reasonable defaults for mobile
+      // Create and configure media recorder with appropriate settings
       const options = {
-        mimeType,
-        audioBitsPerSecond: 128000
+        mimeType: 'audio/webm;codecs=opus',
+        audioBitsPerSecond: 128000 // 128 kbps for better quality but reasonable file size
       };
       
-      audioChunksRef.current = [];
-      setIsRecording(true);
-      
-      // Notify parent about recording state change
-      if (onRecordingStateChange) {
-        onRecordingStateChange(true);
+      try {
+        // Initialize the MediaRecorder with best available format
+        mediaRecorderRef.current = new MediaRecorder(stream, options);
+      } catch (e) {
+        console.warn('Could not use preferred codec, falling back to default', e);
+        mediaRecorderRef.current = new MediaRecorder(stream);
       }
       
-      mediaRecorderRef.current = new MediaRecorder(stream, { mimeType });
+      // Set up data handlers
+      audioChunksRef.current = [];
       
-      // Set a shorter timeslice for mobile devices to improve quality
-      const timeslice = isMobile ? 1000 : 10000; // 1 second for mobile, 10 seconds for desktop
-      
-      mediaRecorderRef.current.start(timeslice);
-      
-      mediaRecorderRef.current.ondataavailable = (event) => {
-        if (event.data.size > 0) {
-          audioChunksRef.current.push(event.data);
+      mediaRecorderRef.current.ondataavailable = (e) => {
+        if (e.data.size > 0) {
+          audioChunksRef.current.push(e.data);
         }
       };
       
-      mediaRecorderRef.current.onstop = () => {
-        const audioBlob = new Blob(audioChunksRef.current, { type: mimeType || 'audio/webm' });
-        setAudioBlob(audioBlob);
-        setIsRecording(false);
+      mediaRecorderRef.current.onstop = async () => {
+        console.log('Recording stopped.');
         
-        // Stop all audio tracks
-        stream.getAudioTracks().forEach(track => track.stop());
+        // Only process if we have audio data
+        if (audioChunksRef.current.length === 0) {
+          setError('No audio data captured. Please try again and speak into your microphone.');
+          setProcessingAudio(false);
+          return;
+        }
         
-        processAudioToText(audioBlob);
+        const blobOptions = {
+          type: 'audio/webm;codecs=opus'
+        };
+        
+        try {
+          // First try with specific MIME type
+          const blob = new Blob(audioChunksRef.current, blobOptions);
+          console.log('Audio blob created, size:', blob.size, 'bytes');
+          
+          if (blob.size < 1000) {
+            // Too small, likely no actual audio
+            setError('Recording too short or no audio detected. Please try again.');
+            setProcessingAudio(false);
+            return;
+          }
+          
+          setAudioBlob(blob);
+          
+          // Process the audio
+          try {
+            const text = await transcribeSpeech(blob);
+            processTranscription(text);
+          } catch (error: any) {
+            console.error('Error processing audio:', error);
+            setError(`Error processing audio: ${error.message}`);
+            setProcessingAudio(false);
+          }
+        } catch (blobError) {
+          console.error('Error creating audio blob:', blobError);
+          setError('Failed to process recording. Please try again.');
+          setProcessingAudio(false);
+        }
+      };
+      
+      // Start recording with appropriate timeslice for better data handling
+      mediaRecorderRef.current.start(1000); // Collect data in 1-second chunks
+      setIsRecording(true);
+      console.log('Recording started successfully');
+      
+      // Clean up stream when component unmounts
+      return () => {
+        stream.getTracks().forEach(track => track.stop());
       };
     } catch (error: any) {
       console.error('Error starting recording:', error);
-      setError(`Error starting recording: ${error.message || 'Unknown error'}`);
+      if (error.name === 'NotAllowedError' || error.name === 'PermissionDeniedError') {
+        setError('Microphone access denied. Please allow microphone access to use this feature.');
+      } else {
+        setError(`Failed to start recording: ${error.message}`);
+      }
     }
   };
 
   const stopRecording = () => {
-    if (!mediaRecorderRef.current) return;
+    if (!isRecording || !mediaRecorderRef.current) return;
     
-    setIsRecording(false);
-    // Notify parent about recording state change
-    if (onRecordingStateChange) {
-      onRecordingStateChange(false);
+    console.log('Stopping recording...');
+    
+    try {
+      setProcessingAudio(true);
+      // MediaRecorder's onstop handler will process the audio
+      mediaRecorderRef.current.stop();
+      setIsRecording(false);
+      
+      // The MediaRecorder.onstop event handler will handle the audio processing
+    } catch (error) {
+      console.error('Error stopping recording:', error);
+      setError('Failed to stop recording. Please try again.');
+      setIsRecording(false);
+      setProcessingAudio(false);
     }
-    
-    mediaRecorderRef.current.stop();
-    
-    // Release microphone access
-    mediaRecorderRef.current.stream.getTracks().forEach(track => track.stop());
-    mediaRecorderRef.current = null;
   };
   
   const processAudioToText = async (audioBlob: Blob) => {
@@ -281,10 +323,7 @@ const AudioRecorder: React.FC<AudioRecorderProps> = ({
   };
   
   const processTranscription = (text: string) => {
-    if (selectedAction === 'ai-draft') {
-      // Continue with AI draft generation
-      generateReply(text);
-    } else if (selectedAction === 'speech-to-text') {
+    if (selectedAction === 'speech-to-text') {
       // For the merged Speech-to-Text functionality:
       // 1. Set the raw transcription as the draft
       setDraftReply(text);
@@ -315,19 +354,18 @@ const AudioRecorder: React.FC<AudioRecorderProps> = ({
       if (stableEmail) {
         setGeneratingDraft(true);
         
-        // Execute the AI draft action
+        // Execute the AI draft action with speech-to-text type but using the AI generation
         const result = await executeAction({
-          type: 'ai-draft',
+          type: 'speech-to-text',
           email: stableEmail,
-          transcription: transcribedText
+          transcription: transcribedText,
+          enhance: true // Add flag to indicate this should use AI enhancement
         });
         
         if (result.success && result.data?.draft) {
           setDraftReply(result.data.draft);
           // Make sure we keep the transcription available even after AI enhancement
-          if (selectedAction === 'speech-to-text') {
-            setTranscription(transcribedText);
-          }
+          setTranscription(transcribedText);
         } else {
           setError(`Error generating reply: ${result.message}`);
         }
@@ -340,39 +378,6 @@ const AudioRecorder: React.FC<AudioRecorderProps> = ({
       setError(`Error generating reply: ${error.message || 'Unknown error'}`);
       setGeneratingDraft(false);
       setProcessingAudio(false);
-    }
-  };
-  
-  const handleSaveDraft = async () => {
-    if (!stableEmail || !draftReply) return;
-    
-    try {
-      setSavingDraft(true);
-      setError(null);
-      
-      // Execute the appropriate action based on the selected action type
-      const result = await performAction();
-      
-      if (result && result.success) {
-        setSuccess(result.message || getSuccessMessage(selectedAction));
-        // Reset email draft after successful save
-        if (onDraftSaved) onDraftSaved();
-        if (onActionComplete) onActionComplete();
-        setTimeout(() => {
-          // Reset component state
-          setAudioBlob(null);
-          setTranscription('');
-          setDraftReply('');
-          setSuccess(null);
-        }, 2000);
-      } else if (result) {
-        setError(result.message || 'Failed to save draft');
-      }
-    } catch (error: any) {
-      console.error('Error saving draft:', error);
-      setError(`Error saving draft: ${error.message || 'Unknown error'}`);
-    } finally {
-      setSavingDraft(false);
     }
   };
   
@@ -391,15 +396,6 @@ const AudioRecorder: React.FC<AudioRecorderProps> = ({
             type: 'speech-to-text',
             email: stableEmail,
             transcription: draftReply || transcription
-          });
-          break;
-          
-        case 'ai-draft':
-          // For AI draft, we've already generated the content
-          result = await executeAction({
-            type: 'speech-to-text', // Just save the draft, AI processing already done
-            email: stableEmail,
-            transcription: draftReply
           });
           break;
           
@@ -476,12 +472,43 @@ const AudioRecorder: React.FC<AudioRecorderProps> = ({
     }
   };
   
+  const handleSaveDraft = async () => {
+    if (!stableEmail || !draftReply) return;
+    
+    try {
+      setSavingDraft(true);
+      setError(null);
+      
+      // Execute the appropriate action based on the selected action type
+      const result = await performAction();
+      
+      if (result && result.success) {
+        setSuccess(result.message || getSuccessMessage(selectedAction));
+        // Reset email draft after successful save
+        if (onDraftSaved) onDraftSaved();
+        if (onActionComplete) onActionComplete();
+        setTimeout(() => {
+          // Reset component state
+          setAudioBlob(null);
+          setTranscription('');
+          setDraftReply('');
+          setSuccess(null);
+        }, 2000);
+      } else if (result) {
+        setError(result.message || 'Failed to save draft');
+      }
+    } catch (error: any) {
+      console.error('Error saving draft:', error);
+      setError(`Error saving draft: ${error.message || 'Unknown error'}`);
+    } finally {
+      setSavingDraft(false);
+    }
+  };
+  
   const getSuccessMessage = (action: EmailActionType): string => {
     switch (action) {
       case 'speech-to-text':
         return 'Draft saved successfully!';
-      case 'ai-draft':
-        return 'AI-generated draft saved successfully!';
       case 'quick-decline':
         return 'Decline email drafted successfully!';
       case 'move-to-read':
@@ -496,8 +523,6 @@ const AudioRecorder: React.FC<AudioRecorderProps> = ({
   const getActionButtonText = (): string => {
     switch (selectedAction) {
       case 'speech-to-text':
-        return savingDraft ? 'Saving...' : 'Save as Draft';
-      case 'ai-draft':
         return savingDraft ? 'Saving...' : 'Save as Draft';
       case 'quick-decline':
         return savingDraft ? 'Saving...' : 'Save Decline Draft';
@@ -590,8 +615,8 @@ const AudioRecorder: React.FC<AudioRecorderProps> = ({
       
       {/* Action Selector removed - now handled by parent component */}
       
-      {/* Email Response Window - Step 3 in hierarchy - Only show when an action is selected or recording is in progress */}
-      {(selectedAction || isRecording || processingAudio || audioBlob || transcription) && (
+      {/* Active Recording UI */}
+      {isRecording && (
         <Paper 
           elevation={0}
           sx={{ 
@@ -610,117 +635,6 @@ const AudioRecorder: React.FC<AudioRecorderProps> = ({
             overflow: 'visible'
           }}
         >
-        {/* Action-specific UI */}
-        {!isRecording && !processingAudio && !audioBlob && !transcription && selectedAction && (
-          <Box 
-            sx={{ 
-              display: 'flex', 
-              justifyContent: 'center', 
-              alignItems: 'center',
-              p: 2,
-              flexGrow: 1,
-              minHeight: '40px',
-              position: 'relative'
-            }}
-          >
-            {(selectedAction === 'speech-to-text' || selectedAction === 'ai-draft') && (
-              <>
-                <IconButton
-                  onClick={startRecording}
-                  size="large"
-                  sx={{
-                    width: 80,
-                    height: 80,
-                    bgcolor: theme.palette.primary.main,
-                    color: 'white',
-                    '&:hover': {
-                      bgcolor: theme.palette.primary.dark,
-                    },
-                    boxShadow: 3,
-                    transition: 'all 0.2s ease'
-                  }}
-                >
-                  <MicIcon sx={{ fontSize: 32 }} />
-                </IconButton>
-                <Typography 
-                  variant="body2" 
-                  sx={{ position: 'absolute', bottom: 20, color: 'text.secondary' }}
-                >
-                  Click to start recording
-                </Typography>
-              </>
-            )}
-            
-            {/* Quick decline action */}
-            {selectedAction === 'quick-decline' && (
-              <Box sx={{ p: 2 }}>
-                <Typography variant="h6" sx={{ mb: 2 }}>Select Template</Typography>
-                <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
-                  Choose a template to use for your email
-                </Typography>
-                
-                <FormControl fullWidth sx={{ mb: 2 }}>
-                  <InputLabel>Template</InputLabel>
-                  <Select
-                    value={selectedTemplateId}
-                    onChange={(e: SelectChangeEvent<string>) => {
-                      const templateId = e.target.value;
-                      if (templateId) {
-                        handleTemplateSelect(templateId);
-                      }
-                    }}
-                    label="Template"
-                  >
-                    {settings.templates
-                      .filter(template => template.type === 'decline')
-                      .map(template => (
-                        <MenuItem key={template.id} value={template.id}>
-                          {template.name}
-                        </MenuItem>
-                      ))}
-                  </Select>
-                </FormControl>
-              </Box>
-            )}
-            
-            {/* Move to read action */}
-            {selectedAction === 'move-to-read' && (
-              <Button
-                variant="contained"
-                color="primary"
-                onClick={performAction}
-                disabled={isPerformingAction || !stableEmail}
-                startIcon={<MicIcon />}
-                sx={{
-                  ...primaryButtonStyles,
-                  height: 48
-                }}
-              >
-                {isPerformingAction ? 'Moving...' : 'Move Email to Read Later'}
-              </Button>
-            )}
-            
-            {/* Archive action */}
-            {selectedAction === 'archive' && (
-              <Button
-                variant="contained"
-                color="primary"
-                onClick={performAction}
-                disabled={isPerformingAction || !stableEmail}
-                startIcon={<ArchiveIcon />}
-                sx={{
-                  ...primaryButtonStyles,
-                  height: 4
-                }}
-              >
-                {isPerformingAction ? 'Archiving...' : 'Archive Email'}
-              </Button>
-            )}
-          </Box>
-        )}
-        
-        {/* Recording in progress */}
-        {isRecording && (
           <Box 
             sx={{ 
               display: 'flex', 
@@ -768,10 +682,29 @@ const AudioRecorder: React.FC<AudioRecorderProps> = ({
               Stop Recording
             </Button>
           </Box>
-        )}
+        </Paper>
+      )}
 
-        {/* Processing audio UI */}
-        {processingAudio && (
+      {/* Processing UI */}
+      {processingAudio && (
+        <Paper 
+          elevation={0}
+          sx={{ 
+            p: { xs: spacing.xs, sm: spacing.sm }, 
+            mb: 0,
+            borderRadius: '12px',
+            border: '1px solid',
+            borderColor: 'divider',
+            backgroundColor: theme => theme.palette.mode === 'dark' ? 'rgba(255,255,255,0.03)' : 'rgba(0,0,0,0.01)',
+            display: 'flex',
+            flexDirection: 'column',
+            alignItems: 'center',
+            justifyContent: 'center',
+            position: 'relative',
+            minHeight: '40px',
+            overflow: 'visible'
+          }}
+        >
           <Box 
             sx={{ 
               display: 'flex', 
@@ -787,9 +720,195 @@ const AudioRecorder: React.FC<AudioRecorderProps> = ({
               Transcribing your audio...
             </Typography>
           </Box>
-        )}
-
-        {/* Transcription UI removed - now only shown in the draft reply section */}
+        </Paper>
+      )}
+      
+      {/* Warm-up UI */}
+      {!isRecording && !processingAudio && !audioBlob && !transcription && selectedAction === 'speech-to-text' && (
+        <Paper 
+          elevation={0}
+          sx={{ 
+            p: { xs: spacing.xs, sm: spacing.sm }, 
+            mb: 0,
+            borderRadius: '12px',
+            border: '1px solid',
+            borderColor: 'divider',
+            backgroundColor: theme => theme.palette.mode === 'dark' ? 'rgba(255,255,255,0.03)' : 'rgba(0,0,0,0.01)',
+            display: 'flex',
+            flexDirection: 'column',
+            alignItems: 'center',
+            justifyContent: 'center',
+            position: 'relative',
+            minHeight: '40px',
+            overflow: 'visible'
+          }}
+        >
+          <Box 
+            sx={{ 
+              display: 'flex', 
+              justifyContent: 'center', 
+              alignItems: 'center',
+              p: 2,
+              flexGrow: 1,
+              minHeight: '40px',
+              position: 'relative'
+            }}
+          >
+            <CircularProgress size={40} />
+            <Typography 
+              variant="body2" 
+              sx={{ position: 'absolute', bottom: 20, color: 'text.secondary' }}
+            >
+              {isWarmingUp ? "Preparing microphone..." : "Starting recording..."}
+            </Typography>
+          </Box>
+        </Paper>
+      )}
+      
+      {/* Quick decline UI */}
+      {!isRecording && !processingAudio && !audioBlob && !transcription && selectedAction === 'quick-decline' && (
+        <Paper 
+          elevation={0}
+          sx={{ 
+            p: { xs: spacing.xs, sm: spacing.sm }, 
+            mb: 0,
+            borderRadius: '12px',
+            border: '1px solid',
+            borderColor: 'divider',
+            backgroundColor: theme => theme.palette.mode === 'dark' ? 'rgba(255,255,255,0.03)' : 'rgba(0,0,0,0.01)',
+            display: 'flex',
+            flexDirection: 'column',
+            alignItems: 'center',
+            justifyContent: 'center',
+            position: 'relative',
+            minHeight: '40px',
+            overflow: 'visible'
+          }}
+        >
+          <Box sx={{ p: 2 }}>
+            <Typography variant="h6" sx={{ mb: 2 }}>Select Template</Typography>
+            <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+              Choose a template to use for your email
+            </Typography>
+            
+            <FormControl fullWidth sx={{ mb: 2 }}>
+              <InputLabel>Template</InputLabel>
+              <Select
+                value={selectedTemplateId}
+                onChange={(e: SelectChangeEvent<string>) => {
+                  const templateId = e.target.value;
+                  if (templateId) {
+                    handleTemplateSelect(templateId);
+                  }
+                }}
+                label="Template"
+              >
+                {settings.templates
+                  .filter(template => template.type === 'decline')
+                  .map(template => (
+                    <MenuItem key={template.id} value={template.id}>
+                      {template.name}
+                    </MenuItem>
+                  ))}
+              </Select>
+            </FormControl>
+          </Box>
+        </Paper>
+      )}
+      
+      {/* Move to read UI */}
+      {!isRecording && !processingAudio && !audioBlob && !transcription && selectedAction === 'move-to-read' && (
+        <Paper 
+          elevation={0}
+          sx={{ 
+            p: { xs: spacing.xs, sm: spacing.sm }, 
+            mb: 0,
+            borderRadius: '12px',
+            border: '1px solid',
+            borderColor: 'divider',
+            backgroundColor: theme => theme.palette.mode === 'dark' ? 'rgba(255,255,255,0.03)' : 'rgba(0,0,0,0.01)',
+            display: 'flex',
+            flexDirection: 'column',
+            alignItems: 'center',
+            justifyContent: 'center',
+            position: 'relative',
+            minHeight: '40px',
+            overflow: 'visible'
+          }}
+        >
+          <Box 
+            sx={{ 
+              display: 'flex', 
+              justifyContent: 'center', 
+              alignItems: 'center',
+              p: 2,
+              flexGrow: 1,
+              minHeight: '40px',
+              position: 'relative'
+            }}
+          >
+            <Button
+              variant="contained"
+              color="primary"
+              onClick={performAction}
+              disabled={isPerformingAction || !stableEmail}
+              startIcon={<MicIcon />}
+              sx={{
+                ...primaryButtonStyles,
+                height: 48
+              }}
+            >
+              {isPerformingAction ? 'Moving...' : 'Move Email to Read Later'}
+            </Button>
+          </Box>
+        </Paper>
+      )}
+      
+      {/* Archive UI */}
+      {!isRecording && !processingAudio && !audioBlob && !transcription && selectedAction === 'archive' && (
+        <Paper 
+          elevation={0}
+          sx={{ 
+            p: { xs: spacing.xs, sm: spacing.sm }, 
+            mb: 0,
+            borderRadius: '12px',
+            border: '1px solid',
+            borderColor: 'divider',
+            backgroundColor: theme => theme.palette.mode === 'dark' ? 'rgba(255,255,255,0.03)' : 'rgba(0,0,0,0.01)',
+            display: 'flex',
+            flexDirection: 'column',
+            alignItems: 'center',
+            justifyContent: 'center',
+            position: 'relative',
+            minHeight: '40px',
+            overflow: 'visible'
+          }}
+        >
+          <Box 
+            sx={{ 
+              display: 'flex', 
+              justifyContent: 'center', 
+              alignItems: 'center',
+              p: 2,
+              flexGrow: 1,
+              minHeight: '40px',
+              position: 'relative'
+            }}
+          >
+            <Button
+              variant="contained"
+              color="primary"
+              onClick={performAction}
+              disabled={isPerformingAction || !stableEmail}
+              startIcon={<ArchiveIcon />}
+              sx={{
+                ...primaryButtonStyles,
+                height: 48
+              }}
+            >
+              {isPerformingAction ? 'Archiving...' : 'Archive Email'}
+            </Button>
+          </Box>
         </Paper>
       )}
 
@@ -800,7 +919,7 @@ const AudioRecorder: React.FC<AudioRecorderProps> = ({
           sx={{ 
             p: { xs: spacing.xs, sm: spacing.sm }, 
             mt: spacing.sm, 
-            mb: 3, 
+            mb: { xs: 8, sm: 3 }, // Increased bottom margin on mobile to provide space for fixed buttons
             borderRadius: '12px',
             border: '1px solid',
             borderColor: 'divider',
@@ -837,24 +956,25 @@ const AudioRecorder: React.FC<AudioRecorderProps> = ({
                   <ContentCopyIcon fontSize="small" />
                 </IconButton>
               </Tooltip>
-              {selectedAction === 'speech-to-text' && !generatingDraft && draftReply && (
-                <Tooltip title="Enhance with AI">
-                  <Button
-                    size="small"
-                    variant="outlined"
-                    color="primary"
-                    onClick={() => {
-                      console.log('Enhance with AI clicked');
-                      generateReply(draftReply);
-                    }}
-                    startIcon={<AutoFixHighIcon />}
-                    sx={{ ml: 1, borderRadius: '8px', fontSize: '0.75rem' }}
-                  >
-                    Enhance with AI
-                  </Button>
-                </Tooltip>
-              )}
             </Box>
+            
+            {selectedAction === 'speech-to-text' && !generatingDraft && draftReply && (
+              <Tooltip title="Enhance with AI">
+                <Button
+                  size="small"
+                  variant="outlined"
+                  color="primary"
+                  onClick={() => {
+                    console.log('Enhance with AI clicked');
+                    generateReply(draftReply);
+                  }}
+                  startIcon={<AutoFixHighIcon />}
+                  sx={{ ml: 1, borderRadius: '8px', fontSize: '0.75rem' }}
+                >
+                  Enhance with AI
+                </Button>
+              </Tooltip>
+            )}
           </Box>
 
           {generatingDraft ? (
@@ -879,7 +999,7 @@ const AudioRecorder: React.FC<AudioRecorderProps> = ({
               value={draftReply}
               onChange={(e: React.ChangeEvent<HTMLTextAreaElement>) => setDraftReply(e.target.value)}
               variant="outlined"
-              placeholder="Your AI-generated draft will appear here"
+              placeholder="Your transcribed text will appear here"
               sx={{ 
                 '& .MuiOutlinedInput-root': {
                   borderRadius: '8px',
@@ -896,7 +1016,10 @@ const AudioRecorder: React.FC<AudioRecorderProps> = ({
                 borderRadius: '8px',
                 backgroundColor: theme => theme.palette.mode === 'dark' ? 'rgba(255,255,255,0.03)' : 'rgba(0,0,0,0.01)',
                 border: '1px solid',
-                borderColor: 'divider'
+                borderColor: 'divider',
+                maxHeight: { xs: '40vh', sm: '60vh' }, // Set appropriate max height for mobile and desktop
+                overflow: 'auto', // Make content scrollable
+                mb: { xs: '80px', sm: 2 } // Add bottom margin to ensure content doesn't hide behind buttons
               }}
             >
               <Typography 
@@ -906,7 +1029,7 @@ const AudioRecorder: React.FC<AudioRecorderProps> = ({
                   lineHeight: 1.6
                 }}
               >
-                {draftReply || "Your AI-generated draft will appear here"}
+                {draftReply || "Your transcribed text will appear here"}
               </Typography>
             </Box>
           )}
@@ -914,8 +1037,23 @@ const AudioRecorder: React.FC<AudioRecorderProps> = ({
           {((draftReply && !generatingDraft) || transcription || selectedAction === 'move-to-read' || selectedAction === 'archive') && (
             <Box sx={{ 
               display: 'flex', 
-              gap: spacing.sm,
+              flexDirection: { xs: 'column', sm: 'row' },
+              gap: 2,
               mt: spacing.sm,
+              mb: { xs: 0, sm: 2 },
+              position: { xs: 'fixed', sm: 'relative' }, // Changed from sticky to relative on desktop
+              bottom: { xs: 0, sm: 'auto' }, // Position at bottom on mobile
+              left: { xs: 0, sm: 'auto' }, // Left edge on mobile
+              right: { xs: 0, sm: 'auto' }, // Right edge on mobile
+              width: { xs: '100%', sm: 'auto' }, // Full width on mobile
+              backgroundColor: theme => theme.palette.background.paper,
+              zIndex: 100, // Higher z-index to ensure visibility
+              pt: 2,
+              px: { xs: 2, sm: 0 }, // Add padding on mobile
+              pb: { xs: 2, sm: 0 },
+              borderTop: '1px solid',
+              borderColor: 'divider',
+              boxShadow: { xs: '0px -2px 8px rgba(0, 0, 0, 0.1)', sm: 'none' }, // Add shadow on mobile
               '& > button': {
                 flex: 1,
                 minWidth: 0
@@ -962,7 +1100,7 @@ const AudioRecorder: React.FC<AudioRecorderProps> = ({
               </Button>
               
               {/* Show send button for draft actions (speech-to-text now shows both buttons) */}
-              {(selectedAction === 'speech-to-text' || selectedAction === 'ai-draft' || selectedAction === 'quick-decline') && (
+              {(selectedAction === 'speech-to-text' || selectedAction === 'quick-decline') && (
                 <Button
                   variant="contained"
                   color="primary"
