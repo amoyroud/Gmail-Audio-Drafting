@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import {
   Box,
   Paper,
@@ -33,6 +34,7 @@ import DeleteIcon from '@mui/icons-material/Delete';
 import Brightness4Icon from '@mui/icons-material/Brightness4';
 import Brightness7Icon from '@mui/icons-material/Brightness7';
 import ColorLensIcon from '@mui/icons-material/ColorLens';
+import ArrowBackIcon from '@mui/icons-material/ArrowBack';
 import { useSettings, EmailTemplate } from '../services/settingsService';
 import { useThemeContext } from '../theme/ThemeProvider';
 import { ThemeMode } from '../theme/theme';
@@ -146,6 +148,7 @@ const ThemeSelector: React.FC = () => {
 };
 
 const SettingsPage: React.FC = () => {
+  const navigate = useNavigate();
   const theme = useTheme();
   const { settings, updateSettings } = useSettings();
   const [showSaved, setShowSaved] = useState(false);
@@ -178,11 +181,50 @@ const SettingsPage: React.FC = () => {
   };
 
   return (
-    <Box sx={{ p: { xs: 2, sm: 3 }, maxWidth: 800, mx: 'auto' }}>
+    <Box sx={{ 
+      maxWidth: 800, 
+      mx: 'auto',
+      height: 'calc(100vh - 64px)', // Account for AppBar height
+      overflow: 'auto', // Enable scrolling
+      position: 'relative', // For absolute positioning of back button if needed
+      pt: 0 // No top padding to ensure back button is at the very top
+    }}>
+      {/* Back Button - Fixed at top */}
+      <Box sx={{ 
+        display: 'flex', 
+        alignItems: 'center',
+        position: 'sticky',
+        top: 0,
+        zIndex: 10,
+        bgcolor: theme.palette.background.default,
+        py: 1.5,
+        px: { xs: 2, sm: 3 },
+        borderBottom: '1px solid',
+        borderColor: 'divider',
+        mb: 3
+      }}>
+        <IconButton 
+          onClick={() => navigate('/home')} 
+          aria-label="back to home" 
+          sx={{ 
+            mr: 2,
+            backgroundColor: theme.palette.mode === 'dark' ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.04)',
+            '&:hover': {
+              backgroundColor: theme.palette.mode === 'dark' ? 'rgba(255,255,255,0.15)' : 'rgba(0,0,0,0.08)',
+            }
+          }}
+        >
+          <ArrowBackIcon />
+        </IconButton>
+        <Typography variant="h5" component="h1">
+          Settings
+        </Typography>
+      </Box>
+
       {/* Theme Settings */}
       <Paper sx={{ p: { xs: 2, sm: 3 }, mb: 3 }}>
         <Box sx={{ mb: 3, display: 'flex', alignItems: 'center', gap: 1 }}>
-          <Typography variant="h5" component="h1">
+          <Typography variant="h5" component="h2">
             Appearance Settings
           </Typography>
           <Tooltip title="Select your preferred theme appearance for the application">

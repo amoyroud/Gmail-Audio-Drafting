@@ -21,7 +21,7 @@ import {
   Tooltip
 } from '@mui/material';
 // Icons
-import SearchIcon from '@mui/icons-material/Search';
+// import SearchIcon from '@mui/icons-material/Search';
 import ArchiveIcon from '@mui/icons-material/Archive';
 import StopIcon from '@mui/icons-material/Stop';
 import EmailIcon from '@mui/icons-material/Email';
@@ -32,6 +32,7 @@ import BookmarkIcon from '@mui/icons-material/Bookmark';
 import ArrowBackIcon from '@mui/icons-material/ArrowBack';
 import KeyboardArrowUpIcon from '@mui/icons-material/KeyboardArrowUp';
 import KeyboardArrowDownIcon from '@mui/icons-material/KeyboardArrowDown';
+import MenuIcon from '@mui/icons-material/Menu';
 import AccessTimeIcon from '@mui/icons-material/AccessTime';
 import AssignmentIcon from '@mui/icons-material/Assignment';
 import TaskAltIcon from '@mui/icons-material/TaskAlt';
@@ -62,7 +63,8 @@ const HomePage: React.FC<HomePageProps> = () => {
   const [archiving, setArchiving] = useState<string | null>(null);
   const [selectedEmail, setSelectedEmail] = useState<Email | null>(null);
   const [selectedEmailIndex, setSelectedEmailIndex] = useState<number>(0);
-  const [searchQuery, setSearchQuery] = useState<string>('');
+  // Search removed
+  // const [searchQuery, setSearchQuery] = useState<string>('');
   const [selectedAction, setSelectedAction] = useState<EmailActionType>('archive');
   const [isRecording, setIsRecording] = useState(false);
   const [recordingAction, setRecordingAction] = useState<EmailActionType | null>(null);
@@ -70,6 +72,7 @@ const HomePage: React.FC<HomePageProps> = () => {
   const [isActionInProgress, setIsActionInProgress] = useState(false);
   const [actionSuccess, setActionSuccess] = useState<string | null>(null);
   const [previousEmailId, setPreviousEmailId] = useState<string | null>(null);
+  const [sidebarVisible, setSidebarVisible] = useState<boolean>(true);
   const { setIsRecorderOpen } = useEmail();
 
   const fetchEmailsList = useCallback(async (pageToken?: string) => {
@@ -110,15 +113,7 @@ const HomePage: React.FC<HomePageProps> = () => {
     });
   };
 
-  const filteredEmails = emails
-    .filter(email => {
-      return searchQuery === '' || 
-        email.subject.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        email.from.name?.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        email.from.email.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        email.snippet.toLowerCase().includes(searchQuery.toLowerCase());
-    })
-    .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+  const filteredEmails = emails.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
 
   // Helper to get initial avatar text
   const getAvatarInitial = (from: string | {name?: string, email: string}) => {
@@ -216,14 +211,12 @@ const HomePage: React.FC<HomePageProps> = () => {
   };
 
   // Use useCallback to prevent recreating this function on every render
-  const handleEmailClick = useCallback(async (email: Email, index?: number) => {
+  const handleEmailDetails = useCallback(async () => {
+    if (!selectedEmail) return;
     try {
-      // Don't unselect an email when clicking it again
-      // This prevents the flickering effect
-      if (selectedEmail?.id !== email.id) { 
-        // Show loading state if needed
-        const fullEmail = await getEmailById(email.id);
-        setEmails(prev => prev.map(e => e.id === fullEmail.id ? fullEmail : e));
+      // For now we have all the email details
+      const fullEmail = await getEmailById(selectedEmail.id) as Email;
+      if (fullEmail) {
         setSelectedEmail(fullEmail);
       }
     } catch (error) {
@@ -231,6 +224,14 @@ const HomePage: React.FC<HomePageProps> = () => {
       setError('Failed to load email details');
     }
   }, [selectedEmail]);
+
+  const handleEmailClick = (email: Email) => {
+    setSelectedEmail(email);
+    if (isMobile) {
+      setPreviousEmailId(email.id);
+      setSidebarVisible(false); // Hide sidebar when email is selected on mobile
+    }
+  }
 
   const handleArchive = async (emailId: string) => {
     setArchiving(emailId);
@@ -385,6 +386,25 @@ const HomePage: React.FC<HomePageProps> = () => {
     }
   }, [selectedEmailIndex, filteredEmails, selectedEmail]);
 
+  // Handle back navigation
+  const handleBackNavigation = () => {
+    setSelectedEmail(null);
+    // Also stop any active recording if user is navigating back
+    if (isRecording) {
+      setIsRecording(false);
+      setRecordingAction(null);
+    }
+    // Show sidebar when going back
+    if (isMobile) {
+      setSidebarVisible(true);
+    }
+  };
+
+  // Toggle sidebar visibility
+  const toggleSidebar = () => {
+    setSidebarVisible(prevState => !prevState);
+  };
+
   if (!isAuthenticated) {
     return (
       <Box sx={{ display: 'flex', flexDirection: 'column', height: '100vh', overflow: 'hidden', bgcolor: 'background.default' }}>
@@ -404,51 +424,10 @@ const HomePage: React.FC<HomePageProps> = () => {
       position: 'fixed',
       width: '100%',
       top: 0,
-      left: 0
+      left: 0,
+      paddingBottom: isMobile ? '60px' : 0 // Reserve space for mobile action bar
     }}>
-      {/* Top Search Bar */}
-      <Paper 
-        elevation={1} 
-        sx={{ 
-          px: 2, 
-          py: 1.5, 
-          display: 'flex', 
-          alignItems: 'center',
-          borderRadius: 0,
-          zIndex: 5,
-          flexShrink: 0
-        }}
-      >
-        {isMobile && selectedEmail && (
-          <IconButton 
-            sx={{ mr: 1 }} 
-            onClick={() => setSelectedEmail(null)}
-          >
-            <ArrowBackIcon />
-          </IconButton>
-        )}
-        <TextField
-          fullWidth
-          placeholder="Search emails..."
-          variant="outlined"
-          size="small"
-          value={searchQuery}
-          onChange={(e) => setSearchQuery(e.target.value)}
-          InputProps={{
-            startAdornment: (
-              <InputAdornment position="start">
-                <SearchIcon />
-              </InputAdornment>
-            ),
-          }}
-          sx={{ 
-            maxWidth: '600px',
-            '& .MuiOutlinedInput-root': {
-              borderRadius: '24px',
-            }
-          }}
-        />
-      </Paper>
+      {/* Empty header - search bar removed */}
 
       {/* Main Content Area - Gmail Layout */}
       <Box sx={{ 
@@ -458,22 +437,21 @@ const HomePage: React.FC<HomePageProps> = () => {
         width: '100%',
       }}>
         {/* Email List - Left Side */}
-        <Paper
-          elevation={0}
+        <Box 
           sx={{
-            width: { xs: isMobile && selectedEmail ? 0 : '100%', sm: '300px', md: '350px' },
-            display: { xs: isMobile && selectedEmail ? 'none' : 'flex', sm: 'flex' },
-            flexDirection: 'column',
-            overflow: 'auto',
-            overflowX: 'hidden',
-            borderRadius: 0,
+            width: { xs: '100%', md: '350px' },
+            height: '100%',
             borderRight: '1px solid',
             borderColor: 'divider',
-            height: '100%',
-            maxHeight: '100%',
-            flexShrink: 0
-          }}
-        >
+            overflow: 'auto',
+            display: { 
+              xs: selectedEmail ? 
+                (sidebarVisible ? 'block' : 'none') : 
+                'block', 
+              md: 'block' 
+            },
+            pt: 2 // Add padding at the top to prevent content from being cropped by app bar
+          }}>
           {loading ? (
             <Box sx={{ display: 'flex', justifyContent: 'center', p: 4 }}>
               <CircularProgress />
@@ -489,7 +467,7 @@ const HomePage: React.FC<HomePageProps> = () => {
               </Typography>
             </Box>
           ) : (
-            <List sx={{ p: 0, width: '100%' }}>
+            <List sx={{ pt: 1, pb: 0, px: 0, width: '100%' }}>
               {filteredEmails.map((email, index) => (
                 <React.Fragment key={email.id}>
                   <ListItem
@@ -654,18 +632,75 @@ const HomePage: React.FC<HomePageProps> = () => {
               ))}
             </List>
           )}
-        </Paper>
+        </Box>
 
         {/* Email Content + Recorder - Right Side */}
         {(selectedEmail || !isMobile) && (
-          <Box sx={{ 
-            flexGrow: 1, 
-            display: 'flex', 
-            flexDirection: 'column',
-            overflow: 'hidden',
-            height: '100%',
-            p: 0
-          }}>
+          <Box 
+            sx={{ 
+              flex: 1, 
+              display: { 
+                xs: !selectedEmail ? 
+                  'none' : 
+                  (sidebarVisible && isMobile ? 'none' : 'flex'), 
+                md: 'flex' 
+              },
+              flexDirection: 'column',
+              height: '100%',
+              overflow: 'hidden'
+            }}
+          >
+            {/* Mobile Header Bar */}
+            {isMobile && selectedEmail && (
+              <Box sx={{
+                px: 2,
+                py: 1.5,
+                display: 'flex',
+                alignItems: 'center',
+                borderBottom: '1px solid',
+                borderColor: 'divider',
+                bgcolor: theme => theme.palette.mode === 'dark' ? 'rgba(0, 0, 0, 0.2)' : 'rgba(255, 255, 255, 0.85)',
+                backdropFilter: 'blur(8px)',
+                position: 'sticky',
+                top: 0,
+                zIndex: 5,
+                justifyContent: 'space-between'
+              }}>
+                <Box sx={{ display: 'flex', alignItems: 'center', flexGrow: 1 }}>
+                  <Button
+                    variant="contained"
+                    startIcon={<ArrowBackIcon />}
+                    onClick={handleBackNavigation}
+                    sx={{ 
+                      mr: 1,
+                      minWidth: 'auto',
+                      py: 0.5,
+                      px: 1.5,
+                      backgroundColor: 'primary.main',
+                      color: 'white',
+                      boxShadow: 2,
+                      '&:hover': {
+                        backgroundColor: 'primary.dark',
+                      }
+                    }}
+                  >
+                    Back
+                  </Button>
+                  <Typography variant="subtitle1" noWrap sx={{ fontWeight: 500, maxWidth: { xs: '160px', sm: '300px' } }}>
+                    {selectedEmail?.subject || ''}
+                  </Typography>
+                </Box>
+                <IconButton 
+                  aria-label="toggle sidebar"
+                  onClick={toggleSidebar}
+                  size="small"
+                  color="primary"
+                  sx={{ ml: 1 }}
+                >
+                  <MenuIcon />
+                </IconButton>
+              </Box>
+            )}
             {actionSuccess && (
               <Alert 
                 severity="success" 
@@ -791,25 +826,26 @@ const HomePage: React.FC<HomePageProps> = () => {
         )}
       </Box>
 
-      {/* Fixed Action Bar at Bottom */}
-      <Box
-        sx={{
-          position: 'absolute',
-          bottom: 0,
-          left: 0,
-          width: '100%',
-          height: '60px',
-          zIndex: 10,
-          backgroundColor: theme.palette.background.paper,
-          borderTop: '1px solid',
-          borderColor: 'divider',
-          display: 'flex',
-          justifyContent: 'center',
-          alignItems: 'center',
-          gap: 2,
-          padding: '0 16px'
-        }}
-      >
+      {/* Fixed Action Bar at Bottom - Desktop Only */}
+      {!isMobile && (
+        <Box
+          sx={{
+            position: 'absolute',
+            bottom: 0,
+            left: 0,
+            width: '100%',
+            height: '60px',
+            zIndex: 10,
+            backgroundColor: theme.palette.background.paper,
+            borderTop: '1px solid',
+            borderColor: 'divider',
+            display: 'flex',
+            justifyContent: 'center',
+            alignItems: 'center',
+            gap: 2,
+            padding: '0 16px'
+          }}
+        >
         {/* Speech-to-Text Button */}
         {!selectedEmail ? (
           <Tooltip title="Select an email first">
@@ -959,7 +995,103 @@ const HomePage: React.FC<HomePageProps> = () => {
             </Button>
           </span>
         </Tooltip>
-      </Box>
+        </Box>
+      )}
+
+      {/* Fixed Bottom Action Bar for Mobile */}
+      {isMobile && (
+        <Box
+          sx={{
+            position: 'fixed',
+            bottom: 0,
+            left: 0,
+            width: '100%',
+            height: '60px',
+            zIndex: theme.zIndex.appBar - 1,
+            backgroundColor: theme.palette.background.paper,
+            borderTop: '1px solid',
+            borderColor: 'divider',
+            display: 'flex',
+            justifyContent: 'space-between',
+            alignItems: 'center',
+            px: 2
+          }}
+        >
+          {/* Speech-to-Text */}
+          <IconButton
+            color="primary"
+            disabled={!selectedEmail}
+            onClick={() => {
+              if (selectedEmail) {
+                if (isRecording && recordingAction === 'speech-to-text') {
+                  setIsRecording(false);
+                  setRecordingAction(null);
+                } else if (!isRecording) {
+                  setSelectedAction('speech-to-text');
+                  setIsRecording(true);
+                  setRecordingAction('speech-to-text');
+                }
+              }
+            }}
+            sx={{
+              bgcolor: isRecording && recordingAction === 'speech-to-text' ? 'error.main' : 'transparent',
+              color: isRecording && recordingAction === 'speech-to-text' ? 'white' : 'primary.main'
+            }}
+          >
+            {isRecording && recordingAction === 'speech-to-text' ? <StopIcon /> : <MicIcon />}
+          </IconButton>
+
+          {/* Quick Decline */}
+          <IconButton
+            color="primary"
+            disabled={!selectedEmail}
+            onClick={() => {
+              if (selectedEmail) {
+                setSelectedAction('quick-decline');
+              }
+            }}
+          >
+            <CancelScheduleSendIcon />
+          </IconButton>
+
+          {/* Move to Read */}
+          <IconButton
+            color="primary"
+            disabled={!selectedEmail || isActionInProgress}
+            onClick={() => {
+              if (selectedEmail) {
+                handleActionSelect('move-to-read');
+              }
+            }}
+          >
+            <BookmarkIcon />
+          </IconButton>
+
+          {/* Archive */}
+          <IconButton
+            color="primary"
+            disabled={!selectedEmail}
+            onClick={() => {
+              if (selectedEmail) handleArchive(selectedEmail.id);
+            }}
+          >
+            <ArchiveIcon />
+          </IconButton>
+
+          {/* Task */}
+          <IconButton
+            color="primary"
+            disabled={!selectedEmail}
+            onClick={() => {
+              if (selectedEmail) {
+                setSelectedAction('task');
+              }
+            }}
+          >
+            <TaskAltIcon />
+          </IconButton>
+        </Box>
+      )}
     </Box>
   );
 };

@@ -52,10 +52,10 @@ const ActionSelector: React.FC<ActionSelectorProps> = ({
   };
 
   return (
-    <Box sx={{ mb: 2 }}>
+    <Box sx={{ mb: { xs: 1, sm: 2 }, width: '100%' }}>
       <Typography 
         variant="subtitle2" 
-        sx={{ mb: 1, fontWeight: 500, color: theme.palette.text.secondary }}
+        sx={{ mb: { xs: 0.5, sm: 1 }, fontWeight: 500, color: theme.palette.text.secondary }}
       >
         Select Action Mode
       </Typography>
@@ -70,11 +70,12 @@ const ActionSelector: React.FC<ActionSelectorProps> = ({
           display: 'flex',
           flexWrap: 'wrap',
           justifyContent: 'center',
-          gap: 2,
+          width: '100%',
+          gap: { xs: 1, sm: 2 },
           '& .MuiToggleButtonGroup-grouped': {
             border: 1,
             borderColor: 'divider',
-            m: 0.5,
+            m: { xs: 0.25, sm: 0.5 },
             '&.Mui-selected': {
               backgroundColor: theme.palette.mode === 'dark' 
                 ? 'rgba(144, 202, 249, 0.16)' 
@@ -90,13 +91,13 @@ const ActionSelector: React.FC<ActionSelectorProps> = ({
             value="speech-to-text" 
             aria-label="speech to text"
             sx={{ 
-              minWidth: '120px',
-              p: 2
+              minWidth: { xs: '90px', sm: '120px' },
+              p: { xs: 1, sm: 2 }
             }}
           >
             <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
-              <MicIcon sx={{ fontSize: 28 }} />
-              <Typography variant="body2" sx={{ mt: 1, fontWeight: 500 }}>Speech</Typography>
+              <MicIcon sx={{ fontSize: { xs: 22, sm: 28 } }} />
+              <Typography variant="body2" sx={{ mt: { xs: 0.5, sm: 1 }, fontWeight: 500, fontSize: { xs: '0.7rem', sm: '0.875rem' } }}>Speech</Typography>
             </Box>
           </ToggleButton>
           </span>
@@ -108,13 +109,13 @@ const ActionSelector: React.FC<ActionSelectorProps> = ({
             value="ai-draft" 
             aria-label="ai draft"
             sx={{ 
-              minWidth: '120px',
-              p: 2
+              minWidth: { xs: '90px', sm: '120px' },
+              p: { xs: 1, sm: 2 }
             }}
           >
             <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
-              <SmartToyIcon sx={{ fontSize: 28 }} />
-              <Typography variant="body2" sx={{ mt: 1, fontWeight: 500 }}>AI Draft</Typography>
+              <SmartToyIcon sx={{ fontSize: { xs: 22, sm: 28 } }} />
+              <Typography variant="body2" sx={{ mt: { xs: 0.5, sm: 1 }, fontWeight: 500, fontSize: { xs: '0.7rem', sm: '0.875rem' } }}>AI Draft</Typography>
             </Box>
           </ToggleButton>
           </span>
@@ -126,13 +127,13 @@ const ActionSelector: React.FC<ActionSelectorProps> = ({
             value="quick-decline" 
             aria-label="quick decline"
             sx={{ 
-              minWidth: '120px',
-              p: 2
+              minWidth: { xs: '90px', sm: '120px' },
+              p: { xs: 1, sm: 2 }
             }}
           >
             <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
-              <CancelScheduleSendIcon sx={{ fontSize: 28 }} />
-              <Typography variant="body2" sx={{ mt: 1, fontWeight: 500 }}>Decline</Typography>
+              <CancelScheduleSendIcon sx={{ fontSize: { xs: 22, sm: 28 } }} />
+              <Typography variant="body2" sx={{ mt: { xs: 0.5, sm: 1 }, fontWeight: 500, fontSize: { xs: '0.7rem', sm: '0.875rem' } }}>Decline</Typography>
             </Box>
           </ToggleButton>
           </span>
@@ -145,13 +146,13 @@ const ActionSelector: React.FC<ActionSelectorProps> = ({
             aria-label="move to read"
             onClick={() => handleDirectClick('move-to-read')}
             sx={{ 
-              minWidth: '120px',
-              p: 2
+              minWidth: { xs: '90px', sm: '120px' },
+              p: { xs: 1, sm: 2 }
             }}
           >
             <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
-              <BookmarkIcon sx={{ fontSize: 28 }} />
-              <Typography variant="body2" sx={{ mt: 1, fontWeight: 500 }}>To Read</Typography>
+              <BookmarkIcon sx={{ fontSize: { xs: 22, sm: 28 } }} />
+              <Typography variant="body2" sx={{ mt: { xs: 0.5, sm: 1 }, fontWeight: 500, fontSize: { xs: '0.7rem', sm: '0.875rem' } }}>To Read</Typography>
             </Box>
           </ToggleButton>
           </span>
@@ -164,13 +165,13 @@ const ActionSelector: React.FC<ActionSelectorProps> = ({
             aria-label="archive"
             onClick={() => handleDirectClick('archive')}
             sx={{ 
-              minWidth: '120px',
-              p: 2
+              minWidth: { xs: '90px', sm: '120px' },
+              p: { xs: 1, sm: 2 }
             }}
           >
             <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
-              <ArchiveIcon sx={{ fontSize: 28 }} />
-              <Typography variant="body2" sx={{ mt: 1, fontWeight: 500 }}>Archive</Typography>
+              <ArchiveIcon sx={{ fontSize: { xs: 22, sm: 28 } }} />
+              <Typography variant="body2" sx={{ mt: { xs: 0.5, sm: 1 }, fontWeight: 500, fontSize: { xs: '0.7rem', sm: '0.875rem' } }}>Archive</Typography>
             </Box>
           </ToggleButton>
           </span>
@@ -183,13 +184,13 @@ const ActionSelector: React.FC<ActionSelectorProps> = ({
             aria-label="convert to task"
             onClick={() => handleDirectClick('task')}
             sx={{ 
-              minWidth: '120px',
-              p: 2
+              minWidth: { xs: '90px', sm: '120px' },
+              p: { xs: 1, sm: 2 }
             }}
           >
             <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
-              <AssignmentIcon sx={{ fontSize: 28 }} />
-              <Typography variant="body2" sx={{ mt: 1, fontWeight: 500 }}>Task</Typography>
+              <AssignmentIcon sx={{ fontSize: { xs: 22, sm: 28 } }} />
+              <Typography variant="body2" sx={{ mt: { xs: 0.5, sm: 1 }, fontWeight: 500, fontSize: { xs: '0.7rem', sm: '0.875rem' } }}>Task</Typography>
             </Box>
           </ToggleButton>
           </span>

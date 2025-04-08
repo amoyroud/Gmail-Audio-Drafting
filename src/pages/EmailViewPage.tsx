@@ -13,8 +13,9 @@ import {
 } from '@mui/material';
 import ArchiveIcon from '@mui/icons-material/Archive';
 import SendIcon from '@mui/icons-material/Send';
+import TaskAltIcon from '@mui/icons-material/TaskAlt';
 import { useNavigate, useParams } from 'react-router-dom';
-import { Email } from '../types/types';
+import { Email, EmailActionType } from '../types/types';
 import { getEmailById, createDraft, archiveEmail } from '../services/gmailService';
 import AudioRecorder from '../components/AudioRecorder';
 import { useEmail } from '../context/EmailContext';
@@ -30,6 +31,7 @@ const EmailViewPage: React.FC = () => {
   const [success, setSuccess] = useState<string | null>(null);
   const [editMode, setEditMode] = useState(false);
   const [draftReply, setDraftReply] = useState('');
+  const [showArchiveButton, setShowArchiveButton] = useState(false);
   const { setSelectedEmail, setIsRecorderOpen } = useEmail();
   const theme = useTheme();
   const isMobile = useMediaQuery(theme.breakpoints.down('sm'));
@@ -99,16 +101,16 @@ const EmailViewPage: React.FC = () => {
       overflow: 'hidden'
     }}>
       <Paper sx={{ 
-        p: { xs: 2, sm: 3 }, 
+        p: { xs: 1.5, sm: 3 }, 
         mb: { xs: 3, md: 0 }, 
         backgroundColor: theme.palette.background.paper,
         flex: { xs: '1 1 auto', md: '0 0 65%' },
         overflowY: 'auto',
-        height: '100%',
+        height: isMobile ? 'calc(100% - 16px)' : '100%',
         display: 'flex',
         flexDirection: 'column'
       }}>
-        <Box sx={{ mb: 3, display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: 2 }}>
+        <Box sx={{ mb: { xs: 1.5, sm: 3 }, display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: { xs: 1, sm: 2 } }}>
           <Box sx={{ flex: 1, minWidth: { xs: '100%', sm: 0 } }}>
             <Typography 
               variant="h5" 
@@ -133,64 +135,27 @@ const EmailViewPage: React.FC = () => {
                 <Typography 
                   variant="subtitle1" 
                   sx={{ 
-                    color: 'text.primary',
+                    color: 'text.secondary',
+                    fontSize: { xs: '0.85rem', sm: '0.875rem' },
                     fontWeight: 500
                   }}
                 >
-                  {email.from.name}
-                </Typography>
-                <Typography 
-                  variant="body2" 
-                  sx={{ color: 'text.secondary' }}
-                >
-                  {email.from.email && `<${email.from.email}>`}
+                  {`From: ${email.from.name || email.from.email}`}
                 </Typography>
               </Box>
               <Typography 
                 variant="body2" 
                 sx={{ 
                   color: 'text.secondary',
-                  mt: { xs: 0.5, sm: 0 }
+                  fontSize: { xs: '0.75rem', sm: '0.8rem' }
                 }}
               >
-                {new Date(email.date).toLocaleString(undefined, {
-                  weekday: 'short',
-                  year: 'numeric',
-                  month: 'short',
-                  day: 'numeric',
-                  hour: '2-digit',
-                  minute: '2-digit'
-                })}
+                {new Date(email.date).toLocaleString()}
               </Typography>
             </Box>
           </Box>
-          <Box sx={{ display: 'flex', justifyContent: { xs: 'flex-end', sm: 'flex-end' }, width: { xs: '100%', sm: 'auto' } }}>
-            <Tooltip title="Archive">
-              <IconButton
-                onClick={async () => {
-                  try {
-                    if (emailId) {
-                      await archiveEmail(emailId);
-                      setSuccess('Email archived successfully');
-                      setTimeout(() => navigate('/'), 1500);
-                    }
-                  } catch (error) {
-                    setError('Failed to archive email');
-                  }
-                }}
-                color="primary"
-                sx={{ 
-                  borderRadius: '8px',
-                  border: '1px solid',
-                  borderColor: 'divider'
-                }}
-              >
-                <ArchiveIcon />
-              </IconButton>
-            </Tooltip>
-          </Box>
         </Box>
-        <Divider sx={{ my: 2 }} />
+        <Divider sx={{ my: { xs: 1, sm: 2 } }} />
         <Typography 
           variant="body1" 
           component="div" 
@@ -200,6 +165,11 @@ const EmailViewPage: React.FC = () => {
             lineHeight: 1.6,
             color: 'text.primary',
             overflowWrap: 'break-word',
+            fontSize: { xs: '0.9rem', sm: '1rem' },
+            flex: 1,
+            overflow: 'auto',
+            maxHeight: isMobile ? 'calc(100vh - 200px)' : 'none', 
+            mb: isMobile ? '60px' : 0, 
             '& a': { 
               color: 'primary.main',
               textDecoration: 'none',

@@ -19,6 +19,7 @@ import EditIcon from '@mui/icons-material/Edit';
 import ContentCopyIcon from '@mui/icons-material/ContentCopy';
 import SendIcon from '@mui/icons-material/Send';
 import ArchiveIcon from '@mui/icons-material/Archive';
+import AutoFixHighIcon from '@mui/icons-material/AutoFixHigh';
 
 // Services
 import { transcribeSpeech } from '../services/elevenlabsService';
@@ -284,9 +285,14 @@ const AudioRecorder: React.FC<AudioRecorderProps> = ({
       // Continue with AI draft generation
       generateReply(text);
     } else if (selectedAction === 'speech-to-text') {
-      // Just use the raw transcription as the draft
+      // For the merged Speech-to-Text functionality:
+      // 1. Set the raw transcription as the draft
       setDraftReply(text);
+      // 2. Ensure we keep the transcription available
+      setTranscription(text);
+      // 3. Finish processing to show the UI with the Enhance with AI button
       setProcessingAudio(false);
+      console.log('Speech-to-text processed:', text); // Debug log
     } else if (selectedAction === 'quick-decline' && selectedTemplateId) {
       // Use the selected template
       const template = settings.templates.find(t => t.id === selectedTemplateId);
@@ -318,6 +324,10 @@ const AudioRecorder: React.FC<AudioRecorderProps> = ({
         
         if (result.success && result.data?.draft) {
           setDraftReply(result.data.draft);
+          // Make sure we keep the transcription available even after AI enhancement
+          if (selectedAction === 'speech-to-text') {
+            setTranscription(transcribedText);
+          }
         } else {
           setError(`Error generating reply: ${result.message}`);
         }
@@ -486,6 +496,7 @@ const AudioRecorder: React.FC<AudioRecorderProps> = ({
   const getActionButtonText = (): string => {
     switch (selectedAction) {
       case 'speech-to-text':
+        return savingDraft ? 'Saving...' : 'Save as Draft';
       case 'ai-draft':
         return savingDraft ? 'Saving...' : 'Save as Draft';
       case 'quick-decline':
@@ -498,7 +509,7 @@ const AudioRecorder: React.FC<AudioRecorderProps> = ({
         return 'Save';
     }
   };
-
+  
   const handleTemplateSelect = (templateId: string) => {
     const template = settings.templates.find(t => t.id === templateId);
     if (!template) return;
@@ -579,25 +590,26 @@ const AudioRecorder: React.FC<AudioRecorderProps> = ({
       
       {/* Action Selector removed - now handled by parent component */}
       
-      {/* Email Response Window - Step 3 in hierarchy */}
-      <Paper 
-        elevation={0}
-        sx={{ 
-          p: { xs: spacing.xs, sm: spacing.sm }, 
-          mb: spacing.md,
-          borderRadius: '12px',
-          border: '1px solid',
-          borderColor: 'divider',
-          backgroundColor: theme => theme.palette.mode === 'dark' ? 'rgba(255,255,255,0.03)' : 'rgba(0,0,0,0.01)',
-          display: 'flex',
-          flexDirection: 'column',
-          alignItems: 'center',
-          justifyContent: 'center',
-          position: 'relative',
-          minHeight: '200px',
-          overflow: 'visible'
-        }}
-      >
+      {/* Email Response Window - Step 3 in hierarchy - Only show when an action is selected or recording is in progress */}
+      {(selectedAction || isRecording || processingAudio || audioBlob || transcription) && (
+        <Paper 
+          elevation={0}
+          sx={{ 
+            p: { xs: spacing.xs, sm: spacing.sm }, 
+            mb: 0,
+            borderRadius: '12px',
+            border: '1px solid',
+            borderColor: 'divider',
+            backgroundColor: theme => theme.palette.mode === 'dark' ? 'rgba(255,255,255,0.03)' : 'rgba(0,0,0,0.01)',
+            display: 'flex',
+            flexDirection: 'column',
+            alignItems: 'center',
+            justifyContent: 'center',
+            position: 'relative',
+            minHeight: '40px',
+            overflow: 'visible'
+          }}
+        >
         {/* Action-specific UI */}
         {!isRecording && !processingAudio && !audioBlob && !transcription && selectedAction && (
           <Box 
@@ -605,9 +617,9 @@ const AudioRecorder: React.FC<AudioRecorderProps> = ({
               display: 'flex', 
               justifyContent: 'center', 
               alignItems: 'center',
-              p: 4,
+              p: 2,
               flexGrow: 1,
-              minHeight: '200px',
+              minHeight: '40px',
               position: 'relative'
             }}
           >
@@ -698,7 +710,7 @@ const AudioRecorder: React.FC<AudioRecorderProps> = ({
                 startIcon={<ArchiveIcon />}
                 sx={{
                   ...primaryButtonStyles,
-                  height: 48
+                  height: 4
                 }}
               >
                 {isPerformingAction ? 'Archiving...' : 'Archive Email'}
@@ -777,36 +789,12 @@ const AudioRecorder: React.FC<AudioRecorderProps> = ({
           </Box>
         )}
 
-        {/* Transcription UI */}
-        {transcription && !isRecording && !processingAudio && (
-          <Paper
-            elevation={0}
-            sx={{
-              p: { xs: spacing.xs, sm: spacing.sm },
-              mt: spacing.sm,
-              mb: 3,
-              borderRadius: '12px',
-              backgroundColor: theme => theme.palette.mode === 'dark' ? 'rgba(255,255,255,0.03)' : 'rgba(0,0,0,0.01)',
-              border: '1px solid',
-              borderColor: 'divider',
-              width: '100%'
-            }}
-          >
-            <Typography
-              variant="body2"
-              sx={{
-                whiteSpace: 'pre-wrap',
-                lineHeight: 1.6
-              }}
-            >
-              {transcription}
-            </Typography>
-          </Paper>
-        )}
-      </Paper>
+        {/* Transcription UI removed - now only shown in the draft reply section */}
+        </Paper>
+      )}
 
       {/* Draft Reply Section */}
-      {draftReply && !isRecording && !processingAudio && stableEmail && (
+      {((draftReply || transcription) && !isRecording && !processingAudio && stableEmail) && (
         <Paper 
           elevation={0}
           sx={{ 
@@ -825,7 +813,7 @@ const AudioRecorder: React.FC<AudioRecorderProps> = ({
             alignItems: 'center',
             mb: 2
           }}>
-            <Box>
+            <Box sx={{ display: 'flex', alignItems: 'center' }}>
               <Tooltip title="Edit draft">
                 <IconButton 
                   size="small" 
@@ -844,10 +832,28 @@ const AudioRecorder: React.FC<AudioRecorderProps> = ({
                     setSuccess("Copied to clipboard!");
                     setTimeout(() => setSuccess(null), 2000);
                   }}
+                  sx={{ mr: 1 }}
                 >
                   <ContentCopyIcon fontSize="small" />
                 </IconButton>
               </Tooltip>
+              {selectedAction === 'speech-to-text' && !generatingDraft && draftReply && (
+                <Tooltip title="Enhance with AI">
+                  <Button
+                    size="small"
+                    variant="outlined"
+                    color="primary"
+                    onClick={() => {
+                      console.log('Enhance with AI clicked');
+                      generateReply(draftReply);
+                    }}
+                    startIcon={<AutoFixHighIcon />}
+                    sx={{ ml: 1, borderRadius: '8px', fontSize: '0.75rem' }}
+                  >
+                    Enhance with AI
+                  </Button>
+                </Tooltip>
+              )}
             </Box>
           </Box>
 
@@ -905,7 +911,7 @@ const AudioRecorder: React.FC<AudioRecorderProps> = ({
             </Box>
           )}
 
-          {((draftReply && !generatingDraft) || selectedAction === 'move-to-read' || selectedAction === 'archive') && (
+          {((draftReply && !generatingDraft) || transcription || selectedAction === 'move-to-read' || selectedAction === 'archive') && (
             <Box sx={{ 
               display: 'flex', 
               gap: spacing.sm,
@@ -942,7 +948,9 @@ const AudioRecorder: React.FC<AudioRecorderProps> = ({
                 disabled={
                   isPerformingAction || 
                   savingDraft || 
-                  (selectedAction !== 'move-to-read' && selectedAction !== 'archive' && !draftReply)
+                  processingAudio ||
+                  ((selectedAction !== 'speech-to-text' && selectedAction !== 'move-to-read' && selectedAction !== 'archive') && !draftReply) ||
+                  (selectedAction === 'speech-to-text' && !transcription && !draftReply)
                 }
                 sx={{ 
                   ...primaryButtonStyles,
@@ -953,7 +961,7 @@ const AudioRecorder: React.FC<AudioRecorderProps> = ({
                 {getActionButtonText()}
               </Button>
               
-              {/* Only show send button for draft actions */}
+              {/* Show send button for draft actions (speech-to-text now shows both buttons) */}
               {(selectedAction === 'speech-to-text' || selectedAction === 'ai-draft' || selectedAction === 'quick-decline') && (
                 <Button
                   variant="contained"

@@ -1,0 +1,1268 @@
+import React, { useState, useEffect, useCallback } from 'react';
+import { useNavigate } from 'react-router-dom';
+import { 
+  Box,
+  List,
+  ListItem,
+  Typography,
+  Button,
+  IconButton,
+  Paper,
+  CircularProgress,
+  useTheme,
+  useMediaQuery,
+  Alert,
+  TextField,
+  InputAdornment,
+  Divider,
+  ListItemButton,
+  ListItemText,
+  Avatar,
+  Tooltip,
+  Drawer,
+  AppBar,
+  Toolbar
+} from '@mui/material';
+// Icons
+import SearchIcon from '@mui/icons-material/Search';
+import ArchiveIcon from '@mui/icons-material/Archive';
+import StopIcon from '@mui/icons-material/Stop';
+import EmailIcon from '@mui/icons-material/Email';
+import MicIcon from '@mui/icons-material/Mic';
+import SmartToyIcon from '@mui/icons-material/SmartToy';
+import CancelScheduleSendIcon from '@mui/icons-material/CancelScheduleSend';
+import BookmarkIcon from '@mui/icons-material/Bookmark';
+import ArrowBackIcon from '@mui/icons-material/ArrowBack';
+import KeyboardArrowUpIcon from '@mui/icons-material/KeyboardArrowUp';
+import KeyboardArrowDownIcon from '@mui/icons-material/KeyboardArrowDown';
+import AccessTimeIcon from '@mui/icons-material/AccessTime';
+import AssignmentIcon from '@mui/icons-material/Assignment';
+import TaskAltIcon from '@mui/icons-material/TaskAlt';
+import MenuIcon from '@mui/icons-material/Menu';
+import CloseIcon from '@mui/icons-material/Close';
+
+// Services
+import { archiveEmail, fetchEmails, getEmailById, getTotalEmailCount, moveToRead, type EmailsResponse } from '../services/gmailService';
+import { Email, EmailActionType, TodoTask } from '../types/types';
+import AudioRecorder from '../components/AudioRecorder';
+import ActionSelector from '../components/ActionSelector';
+import TodoList from '../components/TodoList';
+import GmailAuth from '../components/GmailAuth';
+import EmptyState from '../components/EmptyState';
+import { useEmail } from '../context/EmailContext';
+import { fixEncodingIssues } from '../utils/textFormatter';
+
+interface HomePageProps {}
+
+const HomePage: React.FC<HomePageProps> = () => {
+  const navigate = useNavigate();
+  const theme = useTheme();
+  const isMobile = useMediaQuery(theme.breakpoints.down('sm'));
+  const [isAuthenticated, setIsAuthenticated] = useState(false);
+  const [drawerOpen, setDrawerOpen] = useState(false);
+  
+  const [emails, setEmails] = useState<Email[]>([]);
+  const [nextPageToken, setNextPageToken] = useState<string | null>(null);
+  const [loading, setLoading] = useState<boolean>(true);
+  const [error, setError] = useState<string | null>(null);
+  const [archiving, setArchiving] = useState<string | null>(null);
+  const [selectedEmail, setSelectedEmail] = useState<Email | null>(null);
+  const [selectedEmailIndex, setSelectedEmailIndex] = useState<number>(0);
+  const [searchQuery, setSearchQuery] = useState<string>('');
+  const [selectedAction, setSelectedAction] = useState<EmailActionType>('archive');
+  const [isRecording, setIsRecording] = useState(false);
+  const [recordingAction, setRecordingAction] = useState<EmailActionType | null>(null);
+  const [tasks, setTasks] = useState<TodoTask[]>([]);
+  const [isActionInProgress, setIsActionInProgress] = useState(false);
+  const [actionSuccess, setActionSuccess] = useState<string | null>(null);
+  const [previousEmailId, setPreviousEmailId] = useState<string | null>(null);
+  const { setIsRecorderOpen } = useEmail();
+
+  // Spacing constants for consistency
+  const spacing = {
+    xs: 1,
+    sm: 2,
+    md: 3
+  };
+
+  const fetchEmailsList = useCallback(async (pageToken?: string) => {
+    if (!isAuthenticated) return;
+    setLoading(true);
+    try {
+      const response: EmailsResponse = await fetchEmails(pageToken);
+      if (pageToken) {
+        setEmails(prev => [...prev, ...response.emails]);
+      } else {
+        setEmails(response.emails as Email[]);
+      }
+      setNextPageToken(response.nextPageToken || null);
+    } catch (err) {
+      console.error('Error fetching emails:', err);
+      setError('Failed to load emails. Please try again.');
+    } finally {
+      setLoading(false);
+    }
+  }, [isAuthenticated]);
+
+  useEffect(() => {
+    fetchEmailsList();
+  }, [isAuthenticated, fetchEmailsList]);
+
+  const handleAuthStateChange = (authenticated: boolean) => {
+    setIsAuthenticated(authenticated);
+  };
+
+  const formatDate = (dateString: string) => {
+    const date = new Date(dateString);
+    return date.toLocaleString(undefined, {
+      month: 'short',
+      day: 'numeric',
+      year: date.getFullYear() !== new Date().getFullYear() ? 'numeric' : undefined,
+      hour: '2-digit',
+      minute: '2-digit'
+    });
+  };
+
+  // Filter emails based on search query
+  const filteredEmails = emails
+    .filter(email => {
+      if (!searchQuery) return true;
+      const searchTerms = searchQuery.toLowerCase().split(' ');
+      return searchTerms.every(term => 
+        email.subject?.toLowerCase().includes(term) || 
+        email.snippet?.toLowerCase().includes(term) ||
+        email.from?.name?.toLowerCase().includes(term) ||
+        email.from?.email?.toLowerCase().includes(term)
+      );
+    })
+    .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+
+  // Helper to get initial avatar text
+  const getAvatarInitial = (from: string | {name?: string, email: string}) => {
+    if (typeof from === 'string') {
+      return from.charAt(0).toUpperCase();
+    } 
+    
+    if (from && typeof from === 'object') {
+      if (from.name && from.name.length > 0) {
+        return from.name.charAt(0).toUpperCase();
+      }
+      if (from.email && from.email.length > 0) {
+        return from.email.charAt(0).toUpperCase();
+      }
+    }
+    
+    return '?';
+  };
+
+  // Format email body with proper spacing and handling encoding issues
+  const formatEmailBody = (body: string) => {
+    if (!body) return null;
+    
+    // Apply comprehensive encoding fixes from our utility
+    const processedBody = fixEncodingIssues(body);
+    
+    // Split by lines and format each line
+    return processedBody.split('\n').map((line, i) => {
+      // Handle quoted text (lines starting with '>')
+      if (line.trim().startsWith('>')) {
+        return (
+          <Typography 
+            key={i} 
+            variant="body2" 
+            component="div"
+            sx={{ 
+              pl: 2, 
+              borderLeft: '2px solid', 
+              borderColor: 'divider',
+              color: 'text.secondary',
+              my: 0.5,
+              fontFamily: '"Roboto", "Helvetica", "Arial", sans-serif',
+              fontSize: '0.9rem',
+              whiteSpace: 'pre-wrap'
+            }}
+          >
+            {line.replace(/^>\s*/, '')}
+          </Typography>
+        );
+      }
+      
+      // Handle email signatures (lines with -- or __)
+      if (line.trim() === '--' || line.trim() === '__') {
+        return (
+          <Box key={i}>
+            <Divider sx={{ my: 1.5 }} />
+            <Typography
+              variant="body2"
+              sx={{
+                color: 'text.secondary',
+                fontStyle: 'italic'
+              }}
+            >
+              {/* Signature section */}
+            </Typography>
+          </Box>
+        );
+      }
+      
+      // Regular text
+      return line.trim() === '' ? 
+        <Box key={i} sx={{ height: '0.75em' }} /> : 
+        <Typography 
+          key={i} 
+          variant="body2" 
+          sx={{ 
+            mb: 1,
+            fontFamily: '"Roboto", "Helvetica", "Arial", sans-serif',
+            wordBreak: 'break-word',
+            lineHeight: 1.6,
+            whiteSpace: 'pre-wrap'
+          }}
+        >
+          {line}
+        </Typography>;
+    });
+  };
+
+  // Check if email is unread
+  const isUnread = (email: Email) => {
+    // The Email interface has 'unread' property but the actual emails
+    // might have either 'unread' or 'labelIds' for determining read status
+    // @ts-ignore - ignore TypeScript error since we know the email object shape
+    return email.unread || (email.labelIds && email.labelIds.includes('UNREAD')) || false;
+  };
+
+  // Use useCallback to prevent recreating this function on every render
+  const handleEmailClick = useCallback(async (email: Email, index?: number) => {
+    try {
+      // Don't unselect an email when clicking it again
+      // This prevents the flickering effect
+      if (selectedEmail?.id !== email.id) { 
+        // Set selected email first to prevent UI flickering
+        setSelectedEmail(email);
+        // Then fetch full details
+        const fullEmail = await getEmailById(email.id);
+        setEmails(prev => prev.map(e => e.id === fullEmail.id ? fullEmail : e));
+        setSelectedEmail(fullEmail);
+      }
+    } catch (error) {
+      console.error('Error fetching email details:', error);
+      setError('Failed to load email details');
+    }
+  }, [selectedEmail]);
+
+  const handleArchive = async (emailId: string) => {
+    setArchiving(emailId);
+    try {
+      await archiveEmail(emailId);
+      // Remove the email from the list
+      setEmails(prevEmails => prevEmails.filter(email => email.id !== emailId));
+      // Reset selected email if it was archived
+      if (selectedEmail?.id === emailId) {
+        setSelectedEmail(null);
+        setSelectedAction('archive');
+      }
+      setActionSuccess('Email archived successfully');
+      setTimeout(() => setActionSuccess(null), 3000);
+    } catch (err) {
+      console.error('Error archiving email:', err);
+      setError('Failed to archive email. Please try again.');
+    } finally {
+      setArchiving(null);
+    }
+  };
+
+  const handleMoveToRead = async (emailId: string) => {
+    try {
+      setIsActionInProgress(true);
+      
+      // Use the moveToRead service which will find or create the To Read label
+      const result = await moveToRead(emailId);
+      
+      if (!result.success) {
+        throw new Error('Failed to move email to To Read');
+      }
+      
+      // Update local state
+      setEmails(prevEmails => prevEmails.filter(email => email.id !== emailId));
+      setActionSuccess('Email moved to "To Read" label');
+      setTimeout(() => setActionSuccess(null), 3000);
+      setSelectedAction('archive');
+    } catch (error) {
+      console.error('Error moving email to To Read:', error);
+      setError('Failed to move email to To Read. Please try again.');
+    } finally {
+      setIsActionInProgress(false);
+    }
+  }
+  
+  // Handle task completion
+  const handleTaskComplete = (taskId: string) => {
+    setTasks(prevTasks =>
+      prevTasks.map(task =>
+        task.id === taskId ? { ...task, completed: !task.completed } : task
+      )
+    );
+  };
+
+  // Handle task deletion
+  const handleTaskDelete = (taskId: string) => {
+    setTasks(prevTasks => prevTasks.filter(task => task.id !== taskId));
+  };
+
+  // Handle email drawer toggle
+  const toggleDrawer = (open: boolean) => {
+    setDrawerOpen(open);
+  };
+
+  // Handle email selection from drawer
+  const handleEmailSelectionFromDrawer = (email: Email, index: number) => {
+    handleEmailClick(email, index);
+    if (isMobile) {
+      toggleDrawer(false); // Close drawer after selection on mobile
+    }
+  };
+
+  // Handle back navigation
+  const handleBackNavigation = () => {
+    console.log('Back navigation clicked');
+    // Clear email selection and reset all states for proper mobile navigation
+    setSelectedEmail(null);
+    setSelectedAction('archive');
+    setIsRecording(false);
+    setRecordingAction(null);
+    // Explicitly force mobile view back to email list
+    if (isMobile) {
+      setSelectedEmailIndex(-1); // Reset index to avoid keyboard navigation issues
+      // Add a small timeout to ensure state updates are processed
+      setTimeout(() => {
+        console.log('Mobile view reset to email list');
+      }, 100);
+    }
+    console.log('Selected email reset to null');
+  };
+
+  // Handle action selection
+  const handleActionSelect = (action: EmailActionType) => {
+    setSelectedAction(action);
+    
+    // For certain actions (archive, move-to-read, task), execute immediately if an email is selected
+    if (selectedEmail && (action === 'archive' || action === 'move-to-read' || action === 'task')) {
+      setIsActionInProgress(true);
+      handleEmailAction(action, selectedEmail)
+        .then(result => {
+          if (result && result.success) {
+            setActionSuccess(result.message);
+            setTimeout(() => setActionSuccess(null), 3000);
+          }
+        })
+        .finally(() => {
+          setIsActionInProgress(false);
+        });
+    }
+  };
+
+  // Handle different email actions
+  const handleEmailAction = async (action: EmailActionType, email: Email) => {
+    if (action === 'task') {
+      const newTask: TodoTask = {
+        id: `task-${Date.now()}`,
+        emailId: email.id,
+        subject: email.subject,
+        snippet: email.snippet,
+        from: email.from,
+        date: email.date,
+        completed: false,
+        createdAt: new Date().toISOString()
+      };
+      setTasks(prevTasks => [...prevTasks, newTask]);
+      return { success: true, message: 'Email added to tasks' };
+    }
+    // Always update the selected action - this allows switching between actions
+    setSelectedAction(action);
+    
+    // If Archive or To Read actions, execute them directly
+    if (selectedEmail) {
+      if (action === 'archive') {
+        handleArchive(selectedEmail.id);
+      } else if (action === 'move-to-read') {
+        handleMoveToRead(selectedEmail.id);
+      }
+      // Other actions (speech-to-text, ai-draft, quick-decline) will be handled by AudioRecorder
+    }
+  };
+
+  // Handle keyboard navigation
+  const handleKeyDown = useCallback(async (event: React.KeyboardEvent<HTMLDivElement> | KeyboardEvent) => {
+    if (!filteredEmails || filteredEmails.length === 0) return;
+
+    switch (event.key) {
+      case 'ArrowUp':
+        const newUpIndex = Math.max(0, selectedEmailIndex - 1);
+        setSelectedEmailIndex(newUpIndex);
+        const upEmail = filteredEmails[newUpIndex];
+        if (upEmail) {
+          await handleEmailClick(upEmail);
+        }
+        break;
+      case 'ArrowDown':
+        const newDownIndex = Math.min(filteredEmails.length - 1, selectedEmailIndex + 1);
+        setSelectedEmailIndex(newDownIndex);
+        const downEmail = filteredEmails[newDownIndex];
+        if (downEmail) {
+          await handleEmailClick(downEmail);
+        }
+        break;
+      case 'Enter':
+        const email = filteredEmails[selectedEmailIndex];
+        if (email) {
+          await handleEmailClick(email);
+        }
+        break;
+    }
+  }, [filteredEmails, selectedEmailIndex, handleEmailClick, setSelectedEmailIndex]);
+
+  // Set up keyboard event listeners
+  useEffect(() => {
+    const handleKeyDownEvent = (e: KeyboardEvent) => handleKeyDown(e);
+    window.addEventListener('keydown', handleKeyDownEvent);
+    return () => window.removeEventListener('keydown', handleKeyDownEvent);
+  }, [handleKeyDown]);
+
+  // Update selected email when the selected index changes
+  useEffect(() => {
+    if (filteredEmails && filteredEmails.length > selectedEmailIndex) {
+      const newEmail = filteredEmails[selectedEmailIndex];
+      if (newEmail && newEmail.id !== selectedEmail?.id) {
+        setSelectedEmail(newEmail);
+      }
+    }
+  }, [selectedEmailIndex, filteredEmails, selectedEmail]);
+
+  // Authentication screen
+  if (!isAuthenticated) {
+    return (
+      <Box sx={{ display: 'flex', flexDirection: 'column', height: '100vh', overflow: 'hidden', bgcolor: 'background.default' }}>
+        <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', flexGrow: 1, p: { xs: 2, sm: 4 } }}>
+          <GmailAuth onAuthStateChange={handleAuthStateChange} />
+        </Box>
+      </Box>
+    );
+  }
+  
+  // Main application UI
+  return (
+    <Box sx={{ 
+      display: 'flex', 
+      flexDirection: 'column', 
+      height: '100vh', 
+      overflow: 'hidden',
+      position: 'fixed',
+      width: '100%',
+      top: 0,
+      left: 0,
+      bgcolor: 'background.default'
+    }}>
+      {/* Mobile Drawer for Email List */}
+      {isMobile && (
+        <Drawer
+          anchor="left"
+          open={drawerOpen}
+          onClose={() => toggleDrawer(false)}
+          PaperProps={{
+            sx: {
+              width: '85%',
+              maxWidth: '330px',
+              pt: 0
+            }
+          }}
+        >
+          <Box sx={{ 
+            p: 1, 
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            borderBottom: '1px solid',
+            borderColor: 'divider',
+            backgroundColor: theme.palette.mode === 'dark' ? 'rgba(18, 18, 18, 0.95)' : 'rgba(255, 255, 255, 0.95)',
+          }}>
+            <Typography variant="h6" sx={{ fontWeight: 500 }}>
+              Inbox
+            </Typography>
+            <IconButton onClick={() => toggleDrawer(false)}>
+              <CloseIcon />
+            </IconButton>
+          </Box>
+          
+          <List disablePadding sx={{ width: '100%', bgcolor: 'background.paper', overflow: 'auto', flexGrow: 1 }}>
+            {loading && emails.length === 0 ? (
+              <ListItem sx={{ justifyContent: 'center', p: 3 }}>
+                <CircularProgress size={30} />
+              </ListItem>
+            ) : filteredEmails.length === 0 ? (
+              <ListItem sx={{ justifyContent: 'center', p: 3 }}>
+                <Typography variant="body2" color="text.secondary">
+                  {searchQuery ? 'No emails matching your search.' : 'No emails found.'}
+                </Typography>
+              </ListItem>
+            ) : (
+              filteredEmails.map((email, index) => (
+                <ListItemButton
+                  key={`drawer-${email.id}`}
+                  selected={selectedEmail?.id === email.id}
+                  onClick={() => handleEmailSelectionFromDrawer(email, index)}
+                  sx={{
+                    borderBottom: '1px solid',
+                    borderColor: 'divider',
+                    px: 2,
+                    py: 1.5,
+                    position: 'relative',
+                    flexDirection: 'column',
+                    alignItems: 'flex-start',
+                    gap: 0.75,
+                    bgcolor: selectedEmail?.id === email.id ? 'action.selected' : 
+                             isUnread(email) ? 'rgba(25, 118, 210, 0.08)' : 'transparent',
+                  }}
+                >
+                  <Box sx={{ 
+                    display: 'flex', 
+                    alignItems: 'center', 
+                    width: '100%',
+                    justifyContent: 'space-between',
+                    mb: 0.5
+                  }}>
+                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5 }}>
+                      <Avatar
+                        sx={{ 
+                          width: 32, 
+                          height: 32, 
+                          bgcolor: isUnread(email) ? 'primary.main' : 'grey.400',
+                          fontSize: '0.875rem',
+                          fontWeight: isUnread(email) ? 'bold' : 'normal'
+                        }}
+                      >
+                        {getAvatarInitial(email.from)}
+                      </Avatar>
+                      <Typography 
+                        variant="subtitle2" 
+                        noWrap 
+                        sx={{ 
+                          fontWeight: isUnread(email) ? 700 : 400,
+                          maxWidth: 170
+                        }}
+                      >
+                        {typeof email.from === 'string' 
+                          ? email.from 
+                          : (email.from?.name || email.from?.email)}
+                      </Typography>
+                    </Box>
+                    <Typography 
+                      variant="caption" 
+                      color="text.secondary"
+                      sx={{ fontWeight: isUnread(email) ? 700 : 400 }}
+                    >
+                      {formatDate(email.date)}
+                    </Typography>
+                  </Box>
+                  
+                  <Box sx={{ width: '100%' }}>
+                    <Typography 
+                      variant="body2" 
+                      sx={{ 
+                        fontWeight: isUnread(email) ? 700 : 400,
+                        mb: 0.5,
+                        display: '-webkit-box',
+                        WebkitLineClamp: 1,
+                        WebkitBoxOrient: 'vertical',
+                        overflow: 'hidden',
+                        textOverflow: 'ellipsis',
+                      }}
+                    >
+                      {email.subject}
+                    </Typography>
+                    <Typography 
+                      variant="body2" 
+                      color="text.secondary"
+                      sx={{ 
+                        display: '-webkit-box',
+                        WebkitLineClamp: 2,
+                        WebkitBoxOrient: 'vertical',
+                        overflow: 'hidden',
+                        textOverflow: 'ellipsis',
+                        fontSize: '0.8rem',
+                        lineHeight: 1.3
+                      }}
+                    >
+                      {email.snippet}
+                    </Typography>
+                  </Box>
+                </ListItemButton>
+              ))
+            )}
+            {loading && emails.length > 0 && (
+              <ListItem sx={{ justifyContent: 'center', p: 2 }}>
+                <CircularProgress size={24} />
+              </ListItem>
+            )}
+            {nextPageToken && !loading && (
+              <ListItem sx={{ justifyContent: 'center', p: 1 }}>
+                <Button 
+                  onClick={() => fetchEmailsList(nextPageToken)}
+                  size="small"
+                  sx={{ textTransform: 'none' }}
+                >
+                  Load more emails
+                </Button>
+              </ListItem>
+            )}
+          </List>
+        </Drawer>
+      )}
+      {/* Search bar removed */}
+
+      {/* Email List and Content */}
+      <Box sx={{ 
+        display: 'flex', 
+        flexDirection: { xs: 'column', md: 'row' }, 
+        height: `calc(100vh - ${isMobile ? '80px' : '90px'})`,
+        gap: { xs: spacing.xs, md: spacing.sm },
+        pb: { xs: '60px', sm: '60px' }  // Add padding at bottom to prevent action bar from overlapping content
+      }}>
+        {/* Email List - Left Side */}
+        <Box sx={{
+          width: { xs: '100%', md: '35%', lg: '25%' },
+          overflow: 'auto',
+          borderRight: { xs: 'none', md: '1px solid' },
+          borderColor: 'divider',
+          display: { xs: selectedEmail ? 'none' : 'block', md: 'block' }, // Hide on mobile when email is selected
+          flex: { xs: selectedEmail ? '0' : '1', md: '1' }  // Collapse space when hidden on mobile
+        }}>
+          <Paper
+            elevation={0}
+            sx={{
+              width: '100%',
+              display: 'flex',
+              flexDirection: 'column',
+              overflow: 'auto',
+              overflowX: 'hidden',
+              height: '100%',
+              borderRight: '1px solid',
+              borderColor: 'divider'
+            }}
+          >
+            <List disablePadding sx={{ width: '100%', bgcolor: 'background.paper' }}>
+              {loading && emails.length === 0 ? (
+                <ListItem sx={{ justifyContent: 'center', p: 3 }}>
+                  <CircularProgress size={30} />
+                </ListItem>
+              ) : filteredEmails.length === 0 ? (
+                <ListItem sx={{ justifyContent: 'center', p: 3 }}>
+                  <Typography variant="body2" color="text.secondary">
+                    {searchQuery ? 'No emails matching your search.' : 'No emails found.'}
+                  </Typography>
+                </ListItem>
+              ) : (
+                filteredEmails.map((email, index) => (
+                  <ListItemButton
+                    key={email.id}
+                    selected={selectedEmail?.id === email.id}
+                    onClick={() => {
+                      setSelectedEmailIndex(index);
+                      handleEmailClick(email, index);
+                    }}
+                    sx={{
+                      borderBottom: '1px solid',
+                      borderColor: 'divider',
+                      px: 2,
+                      py: { xs: 1, sm: 1.5 },
+                      position: 'relative',
+                      flexDirection: 'column',
+                      alignItems: 'flex-start',
+                      gap: 0.75,
+                      bgcolor: selectedEmail?.id === email.id ? 'action.selected' : 
+                               isUnread(email) ? 'rgba(25, 118, 210, 0.08)' : 'transparent',
+                    }}
+                  >
+                    <Box sx={{ 
+                      display: 'flex', 
+                      alignItems: 'center', 
+                      width: '100%',
+                      justifyContent: 'space-between',
+                      mb: 0.5
+                    }}>
+                      <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5 }}>
+                        <Avatar
+                          sx={{ 
+                            width: 32, 
+                            height: 32, 
+                            bgcolor: isUnread(email) ? 'primary.main' : 'grey.400',
+                            fontSize: '0.875rem',
+                            fontWeight: isUnread(email) ? 'bold' : 'normal'
+                          }}
+                        >
+                          {getAvatarInitial(email.from)}
+                        </Avatar>
+                        <Typography 
+                          variant="subtitle2" 
+                          noWrap 
+                          sx={{ 
+                            fontWeight: isUnread(email) ? 700 : 400,
+                            maxWidth: { xs: 170, sm: 180, md: 200 }
+                          }}
+                        >
+                          {typeof email.from === 'string' 
+                            ? email.from 
+                            : (email.from?.name || email.from?.email)}
+                        </Typography>
+                      </Box>
+                      <Typography 
+                        variant="caption" 
+                        color="text.secondary"
+                        sx={{ fontWeight: isUnread(email) ? 700 : 400 }}
+                      >
+                        {formatDate(email.date)}
+                      </Typography>
+                    </Box>
+                    
+                    <Box sx={{ width: '100%' }}>
+                      <Typography 
+                        variant="body2" 
+                        sx={{ 
+                          fontWeight: isUnread(email) ? 700 : 400,
+                          mb: 0.5,
+                          display: '-webkit-box',
+                          WebkitLineClamp: 1,
+                          WebkitBoxOrient: 'vertical',
+                          overflow: 'hidden',
+                          textOverflow: 'ellipsis',
+                        }}
+                      >
+                        {email.subject}
+                      </Typography>
+                      <Typography 
+                        variant="body2" 
+                        color="text.secondary"
+                        sx={{ 
+                          display: '-webkit-box',
+                          WebkitLineClamp: 2,
+                          WebkitBoxOrient: 'vertical',
+                          overflow: 'hidden',
+                          textOverflow: 'ellipsis',
+                          fontSize: '0.8rem',
+                          lineHeight: 1.3
+                        }}
+                      >
+                        {email.snippet}
+                      </Typography>
+                    </Box>
+                  </ListItemButton>
+                ))
+              )}
+              {loading && emails.length > 0 && (
+                <ListItem sx={{ justifyContent: 'center', p: 2 }}>
+                  <CircularProgress size={24} />
+                </ListItem>
+              )}
+              {nextPageToken && !loading && (
+                <ListItem sx={{ justifyContent: 'center', p: 1 }}>
+                  <Button 
+                    onClick={() => fetchEmailsList(nextPageToken)}
+                    size="small"
+                    sx={{ textTransform: 'none' }}
+                  >
+                    Load more emails
+                  </Button>
+                </ListItem>
+              )}
+            </List>
+          </Paper>
+        </Box>
+      </Box>
+
+      {/* Email Content - Right Side */}
+      <Box sx={{ 
+        width: { xs: '100%', md: '65%', lg: '75%' }, 
+        overflow: 'auto',
+        display: { xs: selectedEmail ? 'block' : 'none', md: 'block' }, // Only show on mobile when email is selected
+        flex: { xs: selectedEmail ? '1' : '0', md: '1' },  // Take full space when visible on mobile
+        height: { xs: selectedEmail ? '100%' : '0', md: '100%' } // Proper height control for mobile
+      }}>
+        {error && (
+          <Alert 
+            severity="error" 
+            sx={{ mb: 2 }}
+            onClose={() => setError(null)}
+          >
+            {error}
+          </Alert>
+        )}
+
+        {actionSuccess && (
+          <Alert 
+            severity="success" 
+            sx={{ mb: 2 }}
+            onClose={() => setActionSuccess(null)}
+          >
+            {actionSuccess}
+          </Alert>
+        )}
+
+        {isMobile && (
+          <AppBar position="sticky" color="default" elevation={1}>
+            <Toolbar variant="dense" sx={{ px: 1 }}>
+              {selectedEmail ? (
+                <>
+                  <IconButton 
+                    edge="start" 
+                    color="primary" 
+                    onClick={() => setDrawerOpen(true)}
+                    sx={{ mr: 2 }}
+                  >
+                    <MenuIcon />
+                  </IconButton>
+                  <Typography variant="subtitle1" noWrap sx={{ fontWeight: 500, flexGrow: 1 }}>
+                    {selectedEmail?.subject || ''}
+                  </Typography>
+                </>
+              ) : (
+                <>
+                  <Typography variant="h6" sx={{ fontWeight: 500, flexGrow: 1 }}>
+                    Inbox
+                  </Typography>
+                  <IconButton 
+                    edge="end" 
+                    color="primary" 
+                    onClick={() => setDrawerOpen(true)}
+                  >
+                    <MenuIcon />
+                  </IconButton>
+                </>
+              )}
+            </Toolbar>
+          </AppBar>
+        )}
+
+        {!selectedEmail ? (
+          <Box sx={{ 
+            display: { xs: 'none', sm: 'flex' },
+            flexDirection: 'column',
+            alignItems: 'center',
+            justifyContent: 'center',
+            height: '100%',
+            p: 3
+          }}>
+            <EmptyState 
+              type="noSelection"
+              icon="email"
+              message="Select an email from the list to view its content."
+            />
+          </Box>
+        ) : (
+          <Box sx={{ 
+            flexGrow: 1,
+            overflow: 'auto',
+            display: 'flex',
+            flexDirection: 'column',
+            height: '100%',
+            pt: { xs: 0, sm: 1 }
+          }}>
+            <Paper 
+              elevation={0} 
+              sx={{ 
+                p: { xs: 2, sm: 3 },
+                flexGrow: 1,
+                overflow: 'auto',
+                borderRadius: 0,
+              }}
+            >
+              <Box sx={{ mb: 3 }}>
+                <Typography variant="h6" sx={{ mb: 2, pr: 2, wordWrap: 'break-word' }}>
+                  {selectedEmail.subject}
+                </Typography>
+                
+                <Box sx={{ 
+                  display: 'flex', 
+                  alignItems: { xs: 'flex-start', sm: 'center' },
+                  flexDirection: { xs: 'column', sm: 'row' },
+                  gap: { xs: 1, sm: 2 },
+                  mb: 2 
+                }}>
+                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5 }}>
+                    <Avatar sx={{ width: { xs: 32, sm: 40 }, height: { xs: 32, sm: 40 } }}>
+                      {getAvatarInitial(selectedEmail.from)}
+                    </Avatar>
+                    <Box>
+                      <Typography variant="subtitle1">
+                        {typeof selectedEmail.from === 'string' 
+                          ? selectedEmail.from 
+                          : (selectedEmail.from?.name || selectedEmail.from?.email)}
+                      </Typography>
+                      {typeof selectedEmail.from !== 'string' && selectedEmail.from?.email && (
+                        <Typography variant="body2" color="text.secondary">
+                          {selectedEmail.from.email}
+                        </Typography>
+                      )}
+                    </Box>
+                  </Box>
+                  
+                  <Typography 
+                    variant="body2" 
+                    color="text.secondary"
+                    sx={{ 
+                      ml: { xs: 0, sm: 'auto' },
+                      alignSelf: { xs: 'flex-start', sm: 'center' },
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: 0.5
+                    }}
+                  >
+                    <AccessTimeIcon fontSize="small" />
+                    {formatDate(selectedEmail.date)}
+                  </Typography>
+                </Box>
+                
+                <Divider sx={{ my: 2 }} />
+              </Box>
+              
+              <Box sx={{ pb: 4 }}>
+                {selectedEmail.body && formatEmailBody(selectedEmail.body)}
+              </Box>
+
+              {/* Audio Recorder and Action Selector will be shown here when needed */}
+              {selectedEmail && (
+                <AudioRecorder
+                  selectedEmail={selectedEmail}
+                  initialAction={selectedAction}
+                  isRecordingFromParent={isRecording}
+                  recordingAction={recordingAction}
+                  onRecordingStateChange={setIsRecording}
+                />
+              )}
+            </Paper>
+          </Box>
+        )}
+      </Box>
+    </Box>
+
+    {/* Bottom Action Bar - Optimized for Mobile */}
+    <Paper 
+      elevation={4}
+      sx={{ 
+        position: 'fixed',
+        bottom: 0,
+        left: 0,
+        right: 0,
+        zIndex: 100,
+        py: { xs: 1.5, sm: 1.5 },
+        px: { xs: 1.5, sm: 3 },
+        borderTop: '1px solid',
+        borderColor: 'divider',
+        display: 'flex',
+        justifyContent: 'center',
+        alignItems: 'center',
+        gap: { xs: 2, sm: 3 },  // Increased spacing between buttons
+        borderRadius: 0,
+        bgcolor: theme => theme.palette.mode === 'dark' ? 'rgba(18, 18, 18, 0.95)' : 'rgba(255, 255, 255, 0.95)'
+      }}
+    >
+      {/* Archive Button - Mobile Optimized */}
+      <Tooltip title="Archive">
+        {!selectedEmail ? (
+          <span>
+          </span>
+        ) : (
+          <Button 
+            variant="contained"
+            color="primary"
+            startIcon={<ArchiveIcon />}
+            onClick={() => selectedEmail && handleArchive(selectedEmail.id)}
+            disabled={archiving === selectedEmail.id || isActionInProgress}
+            sx={{ 
+              minWidth: { xs: '44px', sm: '120px' },
+              px: { xs: 1.25, sm: 2 },
+              py: { xs: 0.75, sm: 1 },
+              borderRadius: '8px',
+              boxShadow: 2,
+              '& .MuiButton-startIcon': { 
+                marginRight: { xs: 0, sm: 8 }
+              }
+            }}
+          >
+            <Box sx={{ display: { xs: 'none', sm: 'block' } }}>
+              {archiving === selectedEmail?.id ? 'Archiving...' : 'Archive'}
+            </Box>
+          </Button>
+        )}
+          {!selectedEmail ? (
+            <span>
+              <Button
+                variant="contained"
+                disabled={true}
+                startIcon={<ArchiveIcon />}
+                sx={{ 
+                  minWidth: { xs: '44px', sm: '120px' },
+                  px: { xs: 1.25, sm: 2 },
+                  py: { xs: 0.75, sm: 1 },
+                  borderRadius: '8px',
+                  boxShadow: 2,
+                  '& .MuiButton-startIcon': { 
+                    marginRight: { xs: 0, sm: 8 }
+                  }
+                }}
+              >
+                <Box sx={{ display: { xs: 'none', sm: 'block' } }}>Archive</Box>
+              </Button>
+            </span>
+          ) : (
+            <Button 
+              variant="contained"
+              startIcon={<ArchiveIcon />}
+              onClick={() => selectedEmail && handleArchive(selectedEmail.id)}
+              disabled={archiving === selectedEmail.id || isActionInProgress}
+              sx={{ 
+                minWidth: { xs: '44px', sm: '120px' },
+                px: { xs: 1.25, sm: 2 },
+                py: { xs: 0.75, sm: 1 },
+                borderRadius: '8px',
+                boxShadow: 2,
+                '& .MuiButton-startIcon': { 
+                  marginRight: { xs: 0, sm: 8 }
+                }
+              }}
+            >
+              <Box sx={{ display: { xs: 'none', sm: 'block' } }}>Archive</Box>
+            </Button>
+          )}
+        </Tooltip>
+
+        {/* To Read Button - Mobile Optimized */}
+        <Tooltip title="Save to Read Later">
+          {!selectedEmail ? (
+            <span>
+              <Button 
+                variant="contained"
+                disabled={true}
+                startIcon={<BookmarkIcon />}
+                sx={{ 
+                  minWidth: { xs: '44px', sm: '120px' },
+                  px: { xs: 1.25, sm: 2 },
+                  py: { xs: 0.75, sm: 1 },
+                  borderRadius: '8px',
+                  boxShadow: 2,
+                  '& .MuiButton-startIcon': { 
+                    marginRight: { xs: 0, sm: 8 }
+                  }
+                }}
+              >
+                <Box sx={{ display: { xs: 'none', sm: 'block' } }}>To Read</Box>
+              </Button>
+            </span>
+          ) : (
+            <Button 
+              variant="contained"
+              startIcon={<BookmarkIcon />}
+              onClick={() => handleMoveToRead(selectedEmail.id)}
+              disabled={isActionInProgress}
+              sx={{ 
+                minWidth: { xs: '44px', sm: '120px' },
+                px: { xs: 1.25, sm: 2 },
+                py: { xs: 0.75, sm: 1 },
+                borderRadius: '8px',
+                boxShadow: 2,
+                '& .MuiButton-startIcon': { 
+                  marginRight: { xs: 0, sm: 8 }
+                }
+              }}
+            >
+              <Box sx={{ display: { xs: 'none', sm: 'block' } }}>To Read</Box>
+            </Button>
+          )}
+        </Tooltip>
+
+        {/* Task Button - Mobile Optimized */}
+        <Tooltip title="Add to Tasks">
+          {!selectedEmail ? (
+            <span>
+              <Button 
+                variant="contained"
+                disabled={true}
+                startIcon={<AssignmentIcon />}
+                sx={{ 
+                  minWidth: { xs: '44px', sm: '120px' },
+                  px: { xs: 1.25, sm: 2 },
+                  py: { xs: 0.75, sm: 1 },
+                  borderRadius: '8px',
+                  boxShadow: 2,
+                  '& .MuiButton-startIcon': { 
+                    marginRight: { xs: 0, sm: 8 }
+                  }
+                }}
+              >
+                <Box sx={{ display: { xs: 'none', sm: 'block' } }}>Task</Box>
+              </Button>
+            </span>
+          ) : (
+            <Button 
+              variant="contained"
+              startIcon={<AssignmentIcon />}
+              onClick={() => handleActionSelect('task')}
+              disabled={isActionInProgress}
+              sx={{ 
+                minWidth: { xs: '44px', sm: '120px' },
+                px: { xs: 1.25, sm: 2 },
+                py: { xs: 0.75, sm: 1 },
+                borderRadius: '8px',
+                boxShadow: 2,
+                '& .MuiButton-startIcon': { 
+                  marginRight: { xs: 0, sm: 8 }
+                sx={{ 
+                  minWidth: { xs: '44px', sm: '120px' },
+                  px: { xs: 1.25, sm: 2 },
+                  py: { xs: 0.75, sm: 1 },
+                  borderRadius: '8px',
+                  boxShadow: 2,
+                  '& .MuiButton-startIcon': { 
+                    marginRight: { xs: 0, sm: 8 }
+                  }
+                }}
+              >
+                <Box sx={{ display: { xs: 'none', sm: 'block' } }}>Speech</Box>
+              </Button>
+            </span>
+          ) : (
+            <Button 
+              variant="contained"
+              color={isRecording && recordingAction === 'speech-to-text' ? "error" : "primary"}
+              startIcon={isRecording && recordingAction === 'speech-to-text' ? <StopIcon /> : <MicIcon />}
+              onClick={() => {
+                if (isRecording && recordingAction === 'speech-to-text') {
+                  setIsRecording(false);
+                  setRecordingAction(null);
+                } else {
+                  setSelectedAction('speech-to-text');
+                  setIsRecording(true);
+                  setRecordingAction('speech-to-text');
+                }
+              }}
+              sx={{ 
+                minWidth: { xs: '44px', sm: '120px' },
+                px: { xs: 1.25, sm: 2 },
+                py: { xs: 0.75, sm: 1 },
+                borderRadius: '8px',
+                boxShadow: 2,
+                '& .MuiButton-startIcon': { 
+                  marginRight: { xs: 0, sm: 8 }
+                }
+              }}
+            >
+              <Box sx={{ display: { xs: 'none', sm: 'block' } }}>
+                {isRecording && recordingAction === 'speech-to-text' ? "Stop" : "Speech"}
+              </Box>
+            </Button>
+          )}
+        </Tooltip>
+        
+        {/* AI Draft Button - Mobile Optimized */}
+        <Tooltip title={isRecording && recordingAction === 'ai-draft' ? "Stop Recording" : "AI Draft"}>
+          {!selectedEmail ? (
+            <span>
+              <Button 
+                variant="contained"
+                disabled={true}
+                startIcon={<SmartToyIcon />}
+                sx={{ 
+                  minWidth: { xs: '44px', sm: '120px' },
+                  px: { xs: 1.25, sm: 2 },
+                  py: { xs: 0.75, sm: 1 },
+                  borderRadius: '8px',
+                  boxShadow: 2,
+                  '& .MuiButton-startIcon': { 
+                    marginRight: { xs: 0, sm: 8 }
+                  }
+                }}
+              >
+                <Box sx={{ display: { xs: 'none', sm: 'block' } }}>AI Draft</Box>
+              </Button>
+            </span>
+          ) : (
+            <Button 
+              variant="contained"
+              color={isRecording && recordingAction === 'ai-draft' ? "error" : "primary"}
+              startIcon={isRecording && recordingAction === 'ai-draft' ? <StopIcon /> : <SmartToyIcon />}
+              onClick={() => {
+                if (isRecording && recordingAction === 'ai-draft') {
+                  setIsRecording(false);
+                  setRecordingAction(null);
+                } else {
+                  setSelectedAction('ai-draft');
+                  setIsRecording(true);
+                  setRecordingAction('ai-draft');
+                }
+              }}
+              sx={{ 
+                minWidth: { xs: '44px', sm: '120px' },
+                px: { xs: 1.25, sm: 2 },
+                py: { xs: 0.75, sm: 1 },
+                borderRadius: '8px',
+                boxShadow: 2,
+                '& .MuiButton-startIcon': { 
+                  marginRight: { xs: 0, sm: 8 }
+                }
+              }}
+            >
+              <Box sx={{ display: { xs: 'none', sm: 'block' } }}>
+                {isRecording && recordingAction === 'ai-draft' ? "Stop" : "AI Draft"}
+              </Box>
+            </Button>
+          )}
+        </Tooltip>
+
+        {/* Quick Decline Button - Mobile Optimized */}
+        <Tooltip title="Quick Decline">
+          {!selectedEmail ? (
+            <span>
+              <Button 
+                variant="contained"
+                disabled={true}
+                startIcon={<CancelScheduleSendIcon />}
+                sx={{ 
+                  minWidth: { xs: '44px', sm: '120px' },
+                  px: { xs: 1.25, sm: 2 },
+                  py: { xs: 0.75, sm: 1 },
+                  borderRadius: '8px',
+                  boxShadow: 2,
+                  '& .MuiButton-startIcon': { 
+                    marginRight: { xs: 0, sm: 8 }
+                  }
+                }}
+              >
+                <Box sx={{ display: { xs: 'none', sm: 'block' } }}>Decline</Box>
+              </Button>
+            </span>
+          ) : (
+            <Button 
+              variant="contained"
+              startIcon={<CancelScheduleSendIcon />}
+              onClick={() => setSelectedAction('quick-decline')}
+              disabled={isActionInProgress}
+              sx={{ 
+                minWidth: { xs: '44px', sm: '120px' },
+                px: { xs: 1.25, sm: 2 },
+                py: { xs: 0.75, sm: 1 },
+                borderRadius: '8px',
+                boxShadow: 2,
+                '& .MuiButton-startIcon': { 
+                  marginRight: { xs: 0, sm: 8 }
+                }
+              }}
+            >
+              <Box sx={{ display: { xs: 'none', sm: 'block' } }}>Decline</Box>
+            </Button>
+          )}
+        </Tooltip>
+      </Paper>
+    </Box>
+  );
+};
+
+export default HomePage;

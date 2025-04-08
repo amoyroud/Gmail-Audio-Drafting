@@ -43,7 +43,9 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
 
   const handleSettingsClick = () => {
     handleMenuClose();
-    navigate('/settings');
+    console.log('Navigating to settings page');
+    // Force hard navigation to ensure it works
+    window.location.href = '/settings';
   };
 
   return (
@@ -53,7 +55,7 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
       minHeight: '100vh',
       backgroundColor: theme => theme.palette.mode === 'dark' ? '#121212' : '#ffffff'
     }}>
-      <AppBar position="static" sx={{ borderRadius: 0 }}>
+      <AppBar position="fixed" sx={{ borderRadius: 0, zIndex: theme.zIndex.drawer + 1 }}>
         <Toolbar>
           <Box 
             component="div" 
@@ -127,7 +129,8 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
           position: 'relative',
           overflowX: 'hidden',
           maxWidth: '1600px',
-          mx: 'auto'
+          mx: 'auto',
+          mt: '64px' // Add margin top to account for AppBar height
         }}>
         {children}
       </Container>
@@ -149,71 +152,50 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
         </Typography>
       </Box>
 
-      {isMobile ? (
-        <>
-          <Fab
-            color="primary"
-            aria-label="record audio"
-            onClick={() => setIsRecorderOpen(true)}
-            sx={{
-              position: 'fixed',
-              bottom: { xs: spacing.xs * 4, sm: spacing.sm * 4 },
-              right: { xs: spacing.xs * 4, sm: spacing.sm * 4 },
-              zIndex: theme.zIndex.modal + 1,
-              transform: 'scale(1)',
-              '&:hover': {
-                transform: 'scale(1.1)'
-              },
-              transition: 'transform 0.2s ease-in-out',
-              boxShadow: '0 4px 12px rgba(33, 150, 243, 0.3)'
-            }}
-          >
-            <MicIcon />
-          </Fab>
-
-          <Modal
-            open={isRecorderOpen}
-            onClose={() => setIsRecorderOpen(false)}
-            aria-labelledby="audio-recorder-modal"
-            sx={{
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              p: spacing.xs
-            }}
-          >
-            <Box sx={{
-              width: '100%',
-              maxWidth: '600px',
-              maxHeight: '90vh',
-              overflow: 'auto',
-              bgcolor: 'background.paper',
-              borderRadius: '12px',
-              p: { xs: spacing.xs, sm: spacing.sm },
-              boxShadow: theme.shadows[24]
-            }}>
-              {selectedEmail ? (
-                <AudioRecorder
-                  selectedEmail={selectedEmail}
-                  onDraftSaved={() => {
-                    setIsRecorderOpen(false);
-                    setSelectedEmail(undefined);
-                  }}
-                />
-              ) : (
-                <Box sx={{ p: spacing.sm, textAlign: 'center' }}>
-                  <Typography variant="body1" gutterBottom>
-                    No email selected
-                  </Typography>
-                  <Typography variant="body2" color="text.secondary">
-                    Please select an email from your inbox to respond to.
-                  </Typography>
-                </Box>
-              )}
-            </Box>
-          </Modal>
-        </>
-      ) : null}
+      {isMobile && isRecorderOpen && (
+        <Modal
+          open={isRecorderOpen}
+          onClose={() => setIsRecorderOpen(false)}
+          aria-labelledby="audio-recorder-modal"
+          sx={{
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            p: 1
+          }}
+        >
+          <Box sx={{
+            width: '100%',
+            maxWidth: '600px',
+            maxHeight: '80vh', // Reduced from 90vh
+            overflow: 'auto',
+            bgcolor: 'background.paper',
+            borderRadius: '8px',
+            p: { xs: 1, sm: spacing.xs },
+            boxShadow: theme.shadows[24],
+            m: 1
+          }}>
+            {selectedEmail ? (
+              <AudioRecorder
+                selectedEmail={selectedEmail}
+                onDraftSaved={() => {
+                  setIsRecorderOpen(false);
+                  setSelectedEmail(undefined);
+                }}
+              />
+            ) : (
+              <Box sx={{ p: 1.5, textAlign: 'center' }}>
+                <Typography variant="body2" gutterBottom>
+                  No email selected
+                </Typography>
+                <Typography variant="caption" color="text.secondary">
+                  Please select an email from your inbox to respond to.
+                </Typography>
+              </Box>
+            )}
+          </Box>
+        </Modal>
+      )}
     </Box>
   );
 };

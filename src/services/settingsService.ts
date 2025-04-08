@@ -26,6 +26,7 @@ Task: Write a professional and friendly email response that:
 1. Incorporates the key points from my transcribed voice notes
 2. Maintains a friendly, empathetic tone that is short and to the point, not verbose
 3. Sign with {signature}
+4. Don't write anything with "Subject:" 
 
 Write the complete email response:`,
   signature: 'Antoine',
