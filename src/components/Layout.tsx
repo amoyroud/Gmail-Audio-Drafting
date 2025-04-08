@@ -128,9 +128,11 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
           px: isMobile ? spacing.xs : spacing.md,
           position: 'relative',
           overflowX: 'hidden',
+          overflowY: 'auto',
           maxWidth: '1600px',
           mx: 'auto',
-          mt: '64px' // Add margin top to account for AppBar height
+          mt: '64px', // Add margin top to account for AppBar height
+          pb: isMobile ? '80px' : spacing.sm // Add padding at bottom for mobile to account for fixed bottom bar
         }}>
         {children}
       </Container>
@@ -167,13 +169,21 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
           <Box sx={{
             width: '100%',
             maxWidth: '600px',
-            maxHeight: '80vh', // Reduced from 90vh
+            maxHeight: '90vh', 
             overflow: 'auto',
             bgcolor: 'background.paper',
             borderRadius: '8px',
             p: { xs: 1, sm: spacing.xs },
             boxShadow: theme.shadows[24],
-            m: 1
+            m: 1,
+            pb: '100px', // Add extra padding at bottom to ensure send button is accessible
+            // Making scrolling smoother on mobile
+            '-webkit-overflow-scrolling': 'touch',
+            // Ensure proper scroll behavior on iOS
+            display: 'flex',
+            flexDirection: 'column',
+            // Prevent overscroll behavior issues
+            overscrollBehavior: 'contain',
           }}>
             {selectedEmail ? (
               <AudioRecorder

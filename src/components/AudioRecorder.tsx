@@ -20,6 +20,7 @@ import ContentCopyIcon from '@mui/icons-material/ContentCopy';
 import SendIcon from '@mui/icons-material/Send';
 import ArchiveIcon from '@mui/icons-material/Archive';
 import AutoFixHighIcon from '@mui/icons-material/AutoFixHigh';
+import Stack from '@mui/material/Stack';
 
 // Services
 import { transcribeSpeech } from '../services/elevenlabsService';
@@ -1011,15 +1012,54 @@ const AudioRecorder: React.FC<AudioRecorderProps> = ({
             />
           ) : (
             <Box 
+              ref={(el) => {
+                if (el) {
+                  console.log('Scrollable box dimensions:', {
+                    width: el.clientWidth,
+                    height: el.clientHeight,
+                    scrollHeight: el.scrollHeight,
+                    offsetHeight: el.offsetHeight,
+                    scrollTop: el.scrollTop,
+                    viewportHeight: window.innerHeight,
+                    offsetTop: el.offsetTop,
+                    bottomSpace: window.innerHeight - (el.offsetTop + el.offsetHeight)
+                  });
+                }
+              }}
               sx={{ 
                 p: spacing.xs, 
                 borderRadius: '8px',
                 backgroundColor: theme => theme.palette.mode === 'dark' ? 'rgba(255,255,255,0.03)' : 'rgba(0,0,0,0.01)',
                 border: '1px solid',
                 borderColor: 'divider',
-                maxHeight: { xs: '40vh', sm: '60vh' }, // Set appropriate max height for mobile and desktop
-                overflow: 'auto', // Make content scrollable
-                mb: { xs: '80px', sm: 2 } // Add bottom margin to ensure content doesn't hide behind buttons
+                maxHeight: { xs: 'calc(50vh - 180px)', sm: '60vh' }, // Reduced height to test if that's the issue
+                minHeight: { xs: '150px', sm: '200px' }, // Ensure minimum height
+                overflow: 'auto',
+                overflowY: 'auto', // Changed from 'scroll' to 'auto' for better performance
+                mb: { xs: '150px', sm: 2 }, // Increased bottom margin on mobile even more
+                WebkitOverflowScrolling: 'touch', // Proper camelCase for React
+                position: 'relative', // Ensure proper positioning context
+                flexGrow: 1, // Allow box to grow
+                display: 'flex',
+                flexDirection: 'column',
+                '&::-webkit-scrollbar': {
+                  width: '8px',
+                },
+                '&::-webkit-scrollbar-thumb': {
+                  borderRadius: '4px',
+                  backgroundColor: 'rgba(0,0,0,0.2)',
+                },
+              }}
+              onScroll={(e) => {
+                const target = e.currentTarget;
+                console.log('Scroll position:', {
+                  scrollTop: target.scrollTop,
+                  scrollHeight: target.scrollHeight,
+                  clientHeight: target.clientHeight,
+                  atBottom: Math.abs(target.scrollHeight - target.clientHeight - target.scrollTop) < 5,
+                  viewportBottom: window.innerHeight,
+                  elementBottom: target.getBoundingClientRect().bottom
+                });
               }}
             >
               <Typography 
@@ -1035,30 +1075,38 @@ const AudioRecorder: React.FC<AudioRecorderProps> = ({
           )}
 
           {((draftReply && !generatingDraft) || transcription || selectedAction === 'move-to-read' || selectedAction === 'archive') && (
-            <Box sx={{ 
-              display: 'flex', 
-              flexDirection: { xs: 'column', sm: 'row' },
-              gap: 2,
-              mt: spacing.sm,
-              mb: { xs: 0, sm: 2 },
-              position: { xs: 'fixed', sm: 'relative' }, // Changed from sticky to relative on desktop
-              bottom: { xs: 0, sm: 'auto' }, // Position at bottom on mobile
-              left: { xs: 0, sm: 'auto' }, // Left edge on mobile
-              right: { xs: 0, sm: 'auto' }, // Right edge on mobile
-              width: { xs: '100%', sm: 'auto' }, // Full width on mobile
-              backgroundColor: theme => theme.palette.background.paper,
-              zIndex: 100, // Higher z-index to ensure visibility
-              pt: 2,
-              px: { xs: 2, sm: 0 }, // Add padding on mobile
-              pb: { xs: 2, sm: 0 },
-              borderTop: '1px solid',
-              borderColor: 'divider',
-              boxShadow: { xs: '0px -2px 8px rgba(0, 0, 0, 0.1)', sm: 'none' }, // Add shadow on mobile
-              '& > button': {
-                flex: 1,
-                minWidth: 0
-              }
-            }}>
+            <Box
+              ref={(el) => {
+                if (el) {
+                  console.log('Button container dimensions:', {
+                    width: el.clientWidth,
+                    height: el.clientHeight,
+                    offsetTop: el.offsetTop,
+                    position: window.getComputedStyle(el).position,
+                    bottom: window.getComputedStyle(el).bottom,
+                    zIndex: window.getComputedStyle(el).zIndex
+                  });
+                }
+              }}
+              sx={{
+                display: 'flex',
+                justifyContent: 'flex-end',
+                mt: 2,
+                gap: 1.5,
+                position: { xs: 'fixed', sm: 'relative' },
+                bottom: { xs: 0, sm: 'auto' },
+                left: { xs: 0, sm: 'auto' },
+                right: { xs: 0, sm: 'auto' },
+                width: { xs: '100%', sm: 'auto' },
+                p: { xs: 2, sm: 0 },
+                pb: { xs: 3, sm: 0 }, // Add more bottom padding on mobile
+                backgroundColor: { xs: theme => theme.palette.background.default, sm: 'transparent' },
+                borderTop: { xs: '1px solid', sm: 'none' },
+                borderColor: 'divider',
+                zIndex: 100, // Increased z-index to ensure it stays on top
+                boxShadow: { xs: '0px -2px 8px rgba(0,0,0,0.05)', sm: 'none' },
+              }}
+            >
               <Button
                 variant="contained"
                 color="primary"

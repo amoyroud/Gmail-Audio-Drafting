@@ -21,8 +21,6 @@ export const executeAction = async (action: EmailAction): Promise<ActionResult> 
     switch (action.type) {
       case 'speech-to-text':
         return await handleSpeechToText(action);
-      case 'ai-draft':
-        return await handleAIDraft(action);
       case 'quick-decline':
         return await handleQuickDecline(action);
       case 'move-to-read':
@@ -45,7 +43,7 @@ export const executeAction = async (action: EmailAction): Promise<ActionResult> 
 };
 
 /**
- * Handles pure speech-to-text action (no AI processing)
+ * Handles speech-to-text action
  */
 const handleSpeechToText = async (action: EmailAction): Promise<ActionResult> => {
   if (!action.transcription) {
@@ -55,78 +53,54 @@ const handleSpeechToText = async (action: EmailAction): Promise<ActionResult> =>
     };
   }
 
-  const draftEmail: DraftEmail = {
-    to: action.email.from.email,
-    subject: `Re: ${action.email.subject}`,
-    body: action.transcription
-  };
-
   try {
-    const draftId = await createDraft(draftEmail);
+    let emailContent = action.transcription;
     
-    return {
-      success: true,
-      message: 'Draft created from speech',
-      data: { draftId }
-    };
-  } catch (error) {
-    return {
-      success: false,
-      message: `Failed to create draft: ${error instanceof Error ? error.message : 'Unknown error'}`,
-      data: null
-    };
-  }
-};
+    // If enhance flag is set, use the Mistral LLM to enhance the transcription
+    if (action.enhance) {
+      try {
+        // Generate AI draft using the transcription
+        emailContent = await generateDraftResponse({
+          transcribedText: action.transcription,
+          emailSubject: action.email.subject,
+          emailBody: action.email.body,
+          senderName: action.email.from.name
+        });
+      } catch (error) {
+        console.error('Error enhancing transcription with AI:', error);
+        // Continue with the original transcription if enhancement fails
+      }
+    }
 
-/**
- * Handles AI draft generation action
- */
-const handleAIDraft = async (action: EmailAction): Promise<ActionResult> => {
-  if (!action.transcription) {
-    return {
-      success: false,
-      message: 'No transcription provided for AI draft action'
-    };
-  }
-
-  try {
-    // Generate AI draft using the transcription
-    // Generate AI draft using the transcription
-    const draftContent = await generateDraftResponse({
-      transcribedText: action.transcription,
-      emailSubject: action.email.subject,
-      emailBody: action.email.body,
-      senderName: action.email.from.name
-    });
-    
-    // If we got here, the generation was successful
-
+    // Create a draft email with the transcription or AI-enhanced content
     const draftEmail: DraftEmail = {
       to: action.email.from.email,
       subject: `Re: ${action.email.subject}`,
-      body: draftContent
+      body: emailContent
     };
 
     try {
+      // Create a draft in Gmail
       const draftId = await createDraft(draftEmail);
       
       return {
         success: true,
-        message: 'AI draft created',
-        data: { draft: draftContent, draftId }
+        message: action.enhance ? 'AI-enhanced draft created' : 'Speech draft created',
+        data: { draft: emailContent, draftId }
       };
     } catch (error) {
+      console.error('Error creating draft:', error);
       return {
         success: false,
-        message: `Failed to create AI draft: ${error instanceof Error ? error.message : 'Unknown error'}`,
-        data: { draft: draftContent }
+        message: `Failed to create draft: ${error instanceof Error ? error.message : 'Unknown error'}`,
+        data: { draft: emailContent }
       };
     }
   } catch (error) {
-    console.error('Error generating AI draft:', error);
+    console.error('Error in speech-to-text:', error);
     return {
       success: false,
-      message: `Error generating AI draft: ${error instanceof Error ? error.message : 'Unknown error'}`
+      message: `Error in speech-to-text: ${error instanceof Error ? error.message : 'Unknown error'}`
     };
   }
 };

@@ -18,7 +18,8 @@ import {
   ListItemButton,
   ListItemText,
   Avatar,
-  Tooltip
+  Tooltip,
+  Modal
 } from '@mui/material';
 // Icons
 // import SearchIcon from '@mui/icons-material/Search';
@@ -35,7 +36,7 @@ import KeyboardArrowDownIcon from '@mui/icons-material/KeyboardArrowDown';
 import MenuIcon from '@mui/icons-material/Menu';
 import AccessTimeIcon from '@mui/icons-material/AccessTime';
 import AssignmentIcon from '@mui/icons-material/Assignment';
-import TaskAltIcon from '@mui/icons-material/TaskAlt';
+import RefreshIcon from '@mui/icons-material/Refresh';
 
 // Services
 import { archiveEmail, fetchEmails, getEmailById, getTotalEmailCount, moveToRead, type EmailsResponse } from '../services/gmailService';
@@ -47,6 +48,7 @@ import GmailAuth from '../components/GmailAuth';
 import EmptyState from '../components/EmptyState';
 import { useEmail } from '../context/EmailContext';
 import { fixEncodingIssues } from '../utils/textFormatter';
+import Layout from '../components/Layout';
 
 interface HomePageProps {}
 
@@ -74,6 +76,9 @@ const HomePage: React.FC<HomePageProps> = () => {
   const [previousEmailId, setPreviousEmailId] = useState<string | null>(null);
   const [sidebarVisible, setSidebarVisible] = useState<boolean>(true);
   const { setIsRecorderOpen } = useEmail();
+  const [showEmailList, setShowEmailList] = useState(true);
+  const [refreshingEmails, setRefreshingEmails] = useState(false);
+  const [showModal, setShowModal] = useState(false);
 
   const fetchEmailsList = useCallback(async (pageToken?: string) => {
     if (!isAuthenticated) return;
@@ -294,8 +299,8 @@ const HomePage: React.FC<HomePageProps> = () => {
   const handleActionSelect = (action: EmailActionType) => {
     setSelectedAction(action);
     
-    // For certain actions (archive, move-to-read, task), execute immediately if an email is selected
-    if (selectedEmail && (action === 'archive' || action === 'move-to-read' || action === 'task')) {
+    // For certain actions (archive, move-to-read), execute immediately if an email is selected
+    if (selectedEmail && (action === 'archive' || action === 'move-to-read')) {
       setIsActionInProgress(true);
       handleEmailAction(action, selectedEmail)
         .then(result => {
@@ -311,35 +316,64 @@ const HomePage: React.FC<HomePageProps> = () => {
   };
 
   const handleEmailAction = async (action: EmailActionType, email: Email) => {
-    if (action === 'task') {
-      const newTask: TodoTask = {
-        id: `task-${Date.now()}`,
-        emailId: email.id,
-        subject: email.subject,
-        snippet: email.snippet,
-        from: email.from,
-        date: email.date,
-        completed: false,
-        createdAt: new Date().toISOString()
-      };
-      setTasks(prevTasks => [...prevTasks, newTask]);
-      return { success: true, message: 'Email added to tasks' };
-    }
     // Always update the selected action - this allows switching between actions
     setSelectedAction(action);
     
     // If Archive or To Read actions, execute them directly
     if (selectedEmail) {
       if (action === 'archive') {
-        handleArchive(selectedEmail.id);
+        await handleArchive(selectedEmail.id);
+        return { success: true, message: 'Email archived successfully' };
       } else if (action === 'move-to-read') {
-        handleMoveToRead(selectedEmail.id);
+        await handleMoveToRead(selectedEmail.id);
+        return { success: true, message: 'Email moved to To Read folder' };
       }
-      // Other actions (speech-to-text, ai-draft, quick-decline) will be handled by AudioRecorder
+      // Other actions (speech-to-text, quick-decline) will be handled by AudioRecorder
+    }
+    return { success: false, message: 'Action not handled' };
+  };
+
+  const handleBackButtonClick = () => {
+    setSelectedEmail(null);
+    // Also stop any active recording if user is navigating back
+    if (isRecording) {
+      setIsRecording(false);
+      setRecordingAction(null);
+    }
+    // Show sidebar when going back
+    if (isMobile) {
+      setSidebarVisible(true);
     }
   };
 
+  const handleSelectEmail = (email: Email) => {
+    setSelectedEmail(email);
+    if (isMobile) {
+      setPreviousEmailId(email.id);
+      setSidebarVisible(false); // Hide sidebar when email is selected on mobile
+    }
+  };
 
+  const handleCloseModal = () => {
+    setShowModal(false);
+  };
+
+  const handleActionComplete = (action: EmailActionType) => {
+    setSelectedAction(action);
+    setShowModal(false);
+  };
+
+  const handleRefreshEmails = async () => {
+    setRefreshingEmails(true);
+    try {
+      await fetchEmailsList();
+    } catch (err) {
+      console.error('Error refreshing emails:', err);
+      setError('Failed to refresh emails. Please try again.');
+    } finally {
+      setRefreshingEmails(false);
+    }
+  };
 
   useEffect(() => {
     const handleKeyDown = async (event: KeyboardEvent) => {
@@ -386,20 +420,6 @@ const HomePage: React.FC<HomePageProps> = () => {
     }
   }, [selectedEmailIndex, filteredEmails, selectedEmail]);
 
-  // Handle back navigation
-  const handleBackNavigation = () => {
-    setSelectedEmail(null);
-    // Also stop any active recording if user is navigating back
-    if (isRecording) {
-      setIsRecording(false);
-      setRecordingAction(null);
-    }
-    // Show sidebar when going back
-    if (isMobile) {
-      setSidebarVisible(true);
-    }
-  };
-
   // Toggle sidebar visibility
   const toggleSidebar = () => {
     setSidebarVisible(prevState => !prevState);
@@ -416,682 +436,179 @@ const HomePage: React.FC<HomePageProps> = () => {
   }
 
   return (
-    <Box sx={{ 
-      display: 'flex', 
-      flexDirection: 'column', 
-      height: '100vh', 
-      overflow: 'hidden',
-      position: 'fixed',
-      width: '100%',
-      top: 0,
-      left: 0,
-      paddingBottom: isMobile ? '60px' : 0 // Reserve space for mobile action bar
-    }}>
-      {/* Empty header - search bar removed */}
+    <Box
+      sx={{
+        display: 'flex',
+        flexDirection: 'column',
+        minHeight: '100vh',
+        maxWidth: '100vw',
+        overflow: 'hidden'
+      }}
+    >
+      <Header
+        showBackButton={Boolean(selectedEmail || showEmailList)}
+        onBack={handleBackButtonClick}
+        signOut={signOut}
+        loading={loading}
+      />
 
-      {/* Main Content Area - Gmail Layout */}
-      <Box sx={{ 
-        display: 'flex', 
-        height: 'calc(100vh - 64px - 60px)', // Subtract header and action bar heights
-        overflow: 'hidden',
-        width: '100%',
-      }}>
-        {/* Email List - Left Side */}
-        <Box 
+      <Box
+        id="main-content-container"
+        sx={{
+          flexGrow: 1,
+          display: 'flex',
+          flexDirection: { xs: 'column', md: 'row' },
+          overflow: 'hidden',
+        }}
+      >
+        <Box
           sx={{
-            width: { xs: '100%', md: '350px' },
-            height: '100%',
-            borderRight: '1px solid',
+            width: { xs: '100%', md: sidebarWidth },
+            display: { xs: showEmailList || !selectedEmail ? 'block' : 'none', md: 'block' },
+            borderRight: { xs: 'none', md: '1px solid' },
             borderColor: 'divider',
-            overflow: 'auto',
-            display: { 
-              xs: selectedEmail ? 
-                (sidebarVisible ? 'block' : 'none') : 
-                'block', 
-              md: 'block' 
-            },
-            pt: 2 // Add padding at the top to prevent content from being cropped by app bar
-          }}>
-          {loading ? (
-            <Box sx={{ display: 'flex', justifyContent: 'center', p: 4 }}>
-              <CircularProgress />
-            </Box>
-          ) : error ? (
-            <Box sx={{ p: 2 }}>
-              <Alert severity="error">{error}</Alert>
-            </Box>
-          ) : filteredEmails.length === 0 ? (
-            <Box sx={{ p: 3, textAlign: 'center' }}>
-              <Typography variant="body1" color="text.secondary">
-                No emails found
-              </Typography>
-            </Box>
-          ) : (
-            <List sx={{ pt: 1, pb: 0, px: 0, width: '100%' }}>
-              {filteredEmails.map((email, index) => (
-                <React.Fragment key={email.id}>
-                  <ListItem
-                    disablePadding
-                    sx={{
-                      borderBottom: '1px solid',
-                      borderColor: 'divider'
-                    }}
-                  >
-                    <ListItemButton
-                      selected={selectedEmailIndex === index}
-                      onClick={() => {
-                        setSelectedEmailIndex(index);
-                        handleEmailClick(email);
-                      }}
-                      sx={{
-                        py: 1.8,
-                        px: 2,
-                        backgroundColor: index % 2 === 0
-                          ? 'transparent'
-                          : theme.palette.mode === 'dark' 
-                            ? 'rgba(255, 255, 255, 0.03)' 
-                            : 'rgba(0, 0, 0, 0.02)',
-                        transition: 'all 0.2s ease',
-                        '&.Mui-selected': {
-                          backgroundColor: theme.palette.mode === 'dark' 
-                            ? 'rgba(144, 202, 249, 0.16)' 
-                            : 'rgba(33, 150, 243, 0.08)',
-                          borderLeft: '3px solid',
-                          borderColor: 'primary.main',
-                          pl: 1.7, // Adjust padding to accommodate the border
-                        },
-                        '&:hover': {
-                          backgroundColor: theme.palette.mode === 'dark' 
-                            ? 'rgba(255, 255, 255, 0.05)' 
-                            : 'rgba(0, 0, 0, 0.04)',
-                          '.actions': {
-                            opacity: 1
-                          }
-                        }
-                      }}
-                    >
-                      <Box sx={{ width: '100%' }}>
-                        {/* From and date */}
-                        <Box sx={{
-                          display: 'flex',
-                          alignItems: 'center',
-                          justifyContent: 'space-between',
-                          mb: 0.7
-                        }}>
-                          <Box sx={{ display: 'flex', alignItems: 'center', maxWidth: '70%' }}>
-                            {!isUnread(email) && (
-                              <Box 
-                                component="span" 
-                                sx={{ 
-                                  width: 8, 
-                                  height: 8, 
-                                  borderRadius: '50%', 
-                                  bgcolor: 'primary.main', 
-                                  display: 'inline-block', 
-                                  mr: 1,
-                                  flexShrink: 0
-                                }} 
-                              />
-                            )}
-                            <Typography
-                              variant="body2"
-                              sx={{
-                                fontWeight: !isUnread(email) ? 600 : 500,
-                                color: !isUnread(email) ? 'text.primary' : 'text.secondary',
-                                whiteSpace: 'nowrap',
-                                overflow: 'hidden',
-                                textOverflow: 'ellipsis'
-                              }}
-                            >
-                              {typeof email.from === 'string' ? email.from : email.from.name || email.from.email}
-                            </Typography>
-                          </Box>
-                          <Typography
-                            variant="caption"
-                            color="text.secondary"
-                            sx={{
-                              fontWeight: !isUnread(email) ? 500 : 400, 
-                              ml: 1,
-                              flexShrink: 0,
-                              fontSize: '0.7rem',
-                              bgcolor: !isUnread(email) ? (theme.palette.mode === 'dark' ? 'rgba(0, 0, 0, 0.2)' : 'rgba(0, 0, 0, 0.05)') : 'transparent',
-                              px: !isUnread(email) ? 0.8 : 0,
-                              py: !isUnread(email) ? 0.3 : 0,
-                              borderRadius: 1
-                            }}
-                          >
-                            {formatDate(email.date)}
-                          </Typography>
-                        </Box>
-
-                        {/* Subject */}
-                        <Typography
-                          variant="body2"
-                          sx={{
-                            fontWeight: !isUnread(email) ? 500 : 400,
-                            mb: 0.7,
-                            color: !isUnread(email) ? 'text.primary' : 'text.secondary',
-                            overflow: 'hidden',
-                            textOverflow: 'ellipsis',
-                            whiteSpace: 'nowrap',
-                            letterSpacing: !isUnread(email) ? '0.01em' : 'normal'
-                          }}
-                        >
-                          {email.subject}
-                        </Typography>
-
-                        {/* Snippet */}
-                        <Typography
-                          variant="body2"
-                          color="text.secondary"
-                          sx={{
-                            overflow: 'hidden',
-                            textOverflow: 'ellipsis',
-                            whiteSpace: 'nowrap',
-                            fontSize: '0.8rem',
-                            opacity: 0.85,
-                            height: '1.2em', // Fixed height for consistent spacing
-                            lineHeight: 1.2
-                          }}
-                        >
-                          {email.snippet}
-                        </Typography>
-                      </Box>
-
-                      {/* Actions */}
-                      <Box
-                        className="actions"
-                        sx={{
-                          position: 'absolute',
-                          right: 8,
-                          top: 8,
-                          display: 'flex',
-                          gap: 1,
-                          opacity: { xs: 1, sm: 0 },
-                          transition: 'opacity 0.2s'
-                        }}
-                      >
-                        <IconButton
-                          size="small"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            handleArchive(email.id);
-                          }}
-                          disabled={archiving === email.id}
-                        >
-                          {archiving === email.id ? (
-                            <CircularProgress size={16} />
-                          ) : (
-                            <ArchiveIcon fontSize="small" />
-                          )}
-                        </IconButton>
-                      </Box>
-                    </ListItemButton>
-                  </ListItem>
-                </React.Fragment>
-              ))}
-            </List>
-          )}
-        </Box>
-
-        {/* Email Content + Recorder - Right Side */}
-        {(selectedEmail || !isMobile) && (
-          <Box 
-            sx={{ 
-              flex: 1, 
-              display: { 
-                xs: !selectedEmail ? 
-                  'none' : 
-                  (sidebarVisible && isMobile ? 'none' : 'flex'), 
-                md: 'flex' 
-              },
-              flexDirection: 'column',
-              height: '100%',
-              overflow: 'hidden'
+            height: { xs: 'auto', md: 'calc(100vh - 64px)' },
+            overflow: 'hidden',
+            display: 'flex',
+            flexDirection: 'column'
+          }}
+        >
+          {/* Sidebar content */}
+          <Box
+            sx={{
+              p: { xs: spacing.xs, md: spacing.sm },
+              display: 'flex',
+              justifyContent: 'space-between',
+              alignItems: 'center',
+              borderBottom: '1px solid',
+              borderColor: 'divider',
             }}
           >
-            {/* Mobile Header Bar */}
-            {isMobile && selectedEmail && (
-              <Box sx={{
-                px: 2,
-                py: 1.5,
-                display: 'flex',
-                alignItems: 'center',
-                borderBottom: '1px solid',
-                borderColor: 'divider',
-                bgcolor: theme => theme.palette.mode === 'dark' ? 'rgba(0, 0, 0, 0.2)' : 'rgba(255, 255, 255, 0.85)',
-                backdropFilter: 'blur(8px)',
-                position: 'sticky',
-                top: 0,
-                zIndex: 5,
-                justifyContent: 'space-between'
-              }}>
-                <Box sx={{ display: 'flex', alignItems: 'center', flexGrow: 1 }}>
-                  <Button
-                    variant="contained"
-                    startIcon={<ArrowBackIcon />}
-                    onClick={handleBackNavigation}
-                    sx={{ 
-                      mr: 1,
-                      minWidth: 'auto',
-                      py: 0.5,
-                      px: 1.5,
-                      backgroundColor: 'primary.main',
-                      color: 'white',
-                      boxShadow: 2,
-                      '&:hover': {
-                        backgroundColor: 'primary.dark',
-                      }
-                    }}
-                  >
-                    Back
-                  </Button>
-                  <Typography variant="subtitle1" noWrap sx={{ fontWeight: 500, maxWidth: { xs: '160px', sm: '300px' } }}>
-                    {selectedEmail?.subject || ''}
-                  </Typography>
-                </Box>
+            <Typography variant="h6" component="h1">
+              Inbox
+            </Typography>
+            <Box sx={{ display: 'flex', gap: 1 }}>
+              <Tooltip title="Refresh">
                 <IconButton 
-                  aria-label="toggle sidebar"
-                  onClick={toggleSidebar}
+                  onClick={handleRefreshEmails}
+                  disabled={refreshingEmails}
                   size="small"
-                  color="primary"
-                  sx={{ ml: 1 }}
                 >
-                  <MenuIcon />
-                </IconButton>
-              </Box>
-            )}
-            {actionSuccess && (
-              <Alert 
-                severity="success" 
-                sx={{ m: 2 }} 
-                onClose={() => setActionSuccess(null)}
-              >
-                {actionSuccess}
-              </Alert>
-            )}
-
-            {selectedEmail ? (
-              <>
-                {/* Email Header */}
-                <Paper
-                  elevation={0}
-                  sx={{
-                    p: 3,
-                    borderRadius: 0,
-                    borderBottom: '1px solid',
-                    borderColor: 'divider',
-                    bgcolor: theme.palette.mode === 'dark' ? 'rgba(255, 255, 255, 0.03)' : 'rgba(0, 0, 0, 0.02)',
-                    flexShrink: 0
-                  }}
-                >
-                  <Typography variant="h6" sx={{ fontWeight: 600, mb: 1.5 }}>
-                    {selectedEmail.subject}
-                  </Typography>
-                  <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 1 }}>
-                    <Box sx={{ display: 'flex', alignItems: 'center' }}>
-                      <Avatar 
-                        sx={{ 
-                          width: 32, 
-                          height: 32, 
-                          bgcolor: 'primary.main',
-                          mr: 1.5,
-                          fontSize: '0.875rem' 
-                        }}
-                      >
-                        {getAvatarInitial(selectedEmail.from)}
-                      </Avatar>
-                      <Box>
-                        <Typography variant="body2" sx={{ fontWeight: 500, lineHeight: 1.2 }}>
-                          {typeof selectedEmail.from === 'string' ? selectedEmail.from : 
-                            selectedEmail.from.name ? selectedEmail.from.name : selectedEmail.from.email}
-                        </Typography>
-                        {selectedEmail.from.email && (
-                          <Typography variant="caption" color="text.secondary" sx={{ lineHeight: 1 }}>
-                            {typeof selectedEmail.from === 'string' ? '' : selectedEmail.from.email}
-                          </Typography>
-                        )}
-                      </Box>
-                    </Box>
-                    <Typography 
-                      variant="body2" 
-                      color="text.secondary"
-                      sx={{ 
-                        display: 'flex',
-                        alignItems: 'center',
-                        '& svg': { ml: 0.5, opacity: 0.7, fontSize: '1rem' }
-                      }}
-                    >
-                      {formatDate(selectedEmail.date)}
-                      <AccessTimeIcon fontSize="small" />
-                    </Typography>
-                  </Box>
-                </Paper>
-
-                {/* Email Content */}
-                <Box sx={{ p: 3, flexGrow: 1, overflow: 'auto', maxHeight: 'calc(100% - 180px)' }}>
-                  {selectedEmail.body ? (
-                    <Box component="div">
-                      {formatEmailBody(selectedEmail.body)}
-                    </Box>
+                  {refreshingEmails ? (
+                    <CircularProgress size={20} />
                   ) : (
-                    <Typography color="text.secondary">
-                      {selectedEmail.snippet}
-                    </Typography>
+                    <RefreshIcon fontSize="small" />
                   )}
-                </Box>
+                </IconButton>
+              </Tooltip>
+            </Box>
+          </Box>
 
-                {/* Audio Recorder Component */}
-                <Box sx={{ p: 2, flexShrink: 0 }}>
-
-                  <AudioRecorder 
-                    selectedEmail={selectedEmail}
-                    initialAction={selectedAction}
-                    onActionComplete={() => {
-                      setSelectedEmail(null);
-                      setSelectedEmailIndex(0); // Use 0 instead of null to fix type error
-                      setIsRecording(false);
-                      setRecordingAction(null);
-                      // Refresh emails after action if needed
-                      fetchEmailsList();
-                    }}
-                    isRecordingFromParent={isRecording}
-                    recordingAction={recordingAction}
-                    onRecordingStateChange={(recording) => {
-                      setIsRecording(recording);
-                      if (!recording) {
-                        setRecordingAction(null);
-                      }
-                    }}
-                  />
-                </Box>
-              </>
+          {/* Email list section - keep it scrollable */}
+          <Box
+            sx={{
+              overflowY: 'auto',
+              flexGrow: 1,
+              height: { xs: 'calc(100vh - 180px)', md: 'calc(100vh - 128px)' }
+            }}
+          >
+            {loading ? (
+              <Box sx={{ p: spacing.md, textAlign: 'center' }}>
+                <CircularProgress size={40} />
+              </Box>
+            ) : emails.length > 0 ? (
+              <EmailList
+                emails={emails}
+                selectedEmailId={selectedEmail?.id}
+                onSelectEmail={handleSelectEmail}
+              />
             ) : (
-              <Box sx={{ 
-                display: 'flex', 
-                flexDirection: 'column', 
-                alignItems: 'center', 
-                justifyContent: 'center',
-                height: '100%',
-                p: 4
-              }}>
-                <EmptyState 
-                  type="noSelection"
-                  message="Select an email from the list to get started."
-                  icon="email"
-                />
+              <Box sx={{ p: spacing.md, textAlign: 'center' }}>
+                <Typography color="text.secondary">
+                  {error || "No emails found"}
+                </Typography>
+                {error && (
+                  <Button
+                    variant="outlined"
+                    onClick={handleRefreshEmails}
+                    sx={{ mt: 2 }}
+                  >
+                    Try Again
+                  </Button>
+                )}
               </Box>
             )}
           </Box>
-        )}
+        </Box>
+
+        {/* Email content section - make sure it's scrollable */}
+        <Box
+          sx={{
+            flexGrow: 1,
+            display: { xs: !showEmailList && selectedEmail ? 'block' : 'none', md: 'block' },
+            height: { xs: 'calc(100vh - 64px)', md: 'calc(100vh - 64px)' },
+            overflow: 'auto', // Make this area scrollable
+            pb: { xs: 6, sm: 2 }, // Add bottom padding especially on mobile
+          }}
+        >
+          {selectedEmail ? (
+            <EmailContent
+              email={selectedEmail}
+              onAction={handleEmailAction}
+              goBack={() => setSelectedEmail(null)}
+            />
+          ) : (
+            <Box
+              sx={{
+                display: 'flex',
+                justifyContent: 'center',
+                alignItems: 'center',
+                height: '100%',
+                p: spacing.md,
+              }}
+            >
+              <Typography color="text.secondary" align="center">
+                Select an email to view its content
+              </Typography>
+            </Box>
+          )}
+        </Box>
       </Box>
 
-      {/* Fixed Action Bar at Bottom - Desktop Only */}
-      {!isMobile && (
-        <Box
+      {/* Audio recording modal */}
+      <Layout activeTab="home">
+        <Modal
+          open={showModal}
+          onClose={handleCloseModal}
+          aria-labelledby="modal-title"
           sx={{
-            position: 'absolute',
-            bottom: 0,
-            left: 0,
-            width: '100%',
-            height: '60px',
-            zIndex: 10,
-            backgroundColor: theme.palette.background.paper,
-            borderTop: '1px solid',
-            borderColor: 'divider',
             display: 'flex',
+            alignItems: 'center',
             justifyContent: 'center',
-            alignItems: 'center',
-            gap: 2,
-            padding: '0 16px'
           }}
         >
-        {/* Speech-to-Text Button */}
-        {!selectedEmail ? (
-          <Tooltip title="Select an email first">
-            <Button 
-              variant="contained" 
-              color="primary"
-              startIcon={<MicIcon />}
-              disabled={true}
-            >
-              Speech-to-Text
-            </Button>
-          </Tooltip>
-        ) : (
-          <Tooltip title={isRecording && recordingAction === 'speech-to-text' ? "Click to stop recording" : "Record Speech to Text"}>
-            <Button 
-              variant="contained" 
-              color={isRecording && recordingAction === 'speech-to-text' ? "error" : "primary"}
-              startIcon={isRecording && recordingAction === 'speech-to-text' ? <StopIcon /> : <MicIcon />}
-              onClick={() => {
-                if (isRecording && recordingAction === 'speech-to-text') {
-                  // Stop recording
-                  setIsRecording(false);
-                  setRecordingAction(null);
-                  // The AudioRecorder component will handle the stop recording logic
-                } else if (!isRecording) {
-                  // Start recording for speech-to-text
-                  setSelectedAction('speech-to-text');
-                  setIsRecording(true);
-                  setRecordingAction('speech-to-text');
-                }
-              }}
-              disabled={isRecording && recordingAction !== 'speech-to-text'}
-            >
-              {isRecording && recordingAction === 'speech-to-text' ? "Stop Recording" : "Speech-to-Text"}
-            </Button>
-          </Tooltip>
-        )}
-
-        {/* AI Draft Button */}
-        {!selectedEmail ? (
-          <Tooltip title="Select an email first">
-            <Button 
-              variant="outlined"
-              startIcon={<SmartToyIcon />}
-              disabled={true}
-            >
-              AI Draft
-            </Button>
-          </Tooltip>
-        ) : (
-          <Tooltip title={isRecording && recordingAction === 'ai-draft' ? "Click to stop recording" : "Generate AI Draft"}>
-            <Button 
-              variant="outlined"
-              color={isRecording && recordingAction === 'ai-draft' ? "error" : "primary"}
-              startIcon={isRecording && recordingAction === 'ai-draft' ? <StopIcon /> : <SmartToyIcon />}
-              onClick={() => {
-                if (isRecording && recordingAction === 'ai-draft') {
-                  setIsRecording(false);
-                  setRecordingAction(null);
-                } else if (!isRecording) {
-                  setSelectedAction('ai-draft');
-                  setIsRecording(true);
-                  setRecordingAction('ai-draft');
-                }
-              }}
-              disabled={isRecording && recordingAction !== 'ai-draft'}
-            >
-              {isRecording && recordingAction === 'ai-draft' ? "Stop Recording" : "AI Draft"}
-            </Button>
-          </Tooltip>
-        )}
-
-        {/* Quick Decline Button */}
-        <Tooltip title="Quick Decline">
-          {!selectedEmail ? (
-            <span>
-              <Button 
-                variant="outlined"
-                startIcon={<CancelScheduleSendIcon />}
-                disabled={true}
-              >
-                Quick Decline
-              </Button>
-            </span>
-          ) : (
-            <Button 
-              variant="outlined"
-              startIcon={<CancelScheduleSendIcon />}
-              onClick={() => setSelectedAction('quick-decline')}
-            >
-              Quick Decline
-            </Button>
-          )}
-        </Tooltip>
-
-        {/* Move to Read Button */}
-        <Tooltip title="Move to Read">
-          {!selectedEmail || isActionInProgress ? (
-            <span>
-              <Button 
-                variant="outlined"
-                startIcon={<BookmarkIcon />}
-                disabled={true}
-              >
-                Move to Read
-              </Button>
-            </span>
-          ) : (
-            <Button 
-              variant="outlined"
-              startIcon={<BookmarkIcon />}
-              onClick={() => handleActionSelect('move-to-read')}
-            >
-              Move to Read
-            </Button>
-          )}
-        </Tooltip>
-
-        {/* Archive Button */}
-        <Tooltip title="Archive">
-          <span>
-            <Button
-              variant="outlined"
-              color="primary"
-              startIcon={<ArchiveIcon />}
-              disabled={!selectedEmail}
-              onClick={() => {
-                if (selectedEmail) handleArchive(selectedEmail.id);
-              }}
-            >
-              Archive
-            </Button>
-          </span>
-        </Tooltip>
-
-        {/* Task Actions Button */}
-        <Tooltip title="Create Task">
-          <span>
-            <Button
-              variant="outlined"
-              startIcon={<TaskAltIcon />}
-              disabled={!selectedEmail}
-              onClick={() => {setSelectedAction('task');
-              }}
-            >
-              Task
-            </Button>
-          </span>
-        </Tooltip>
-        </Box>
-      )}
-
-      {/* Fixed Bottom Action Bar for Mobile */}
-      {isMobile && (
-        <Box
-          sx={{
-            position: 'fixed',
-            bottom: 0,
-            left: 0,
-            width: '100%',
-            height: '60px',
-            zIndex: theme.zIndex.appBar - 1,
-            backgroundColor: theme.palette.background.paper,
-            borderTop: '1px solid',
-            borderColor: 'divider',
-            display: 'flex',
-            justifyContent: 'space-between',
-            alignItems: 'center',
-            px: 2
-          }}
-        >
-          {/* Speech-to-Text */}
-          <IconButton
-            color="primary"
-            disabled={!selectedEmail}
-            onClick={() => {
-              if (selectedEmail) {
-                if (isRecording && recordingAction === 'speech-to-text') {
-                  setIsRecording(false);
-                  setRecordingAction(null);
-                } else if (!isRecording) {
-                  setSelectedAction('speech-to-text');
-                  setIsRecording(true);
-                  setRecordingAction('speech-to-text');
-                }
-              }
-            }}
+          <Paper
             sx={{
-              bgcolor: isRecording && recordingAction === 'speech-to-text' ? 'error.main' : 'transparent',
-              color: isRecording && recordingAction === 'speech-to-text' ? 'white' : 'primary.main'
+              width: { xs: '95%', sm: '90%', md: '80%', lg: '70%' },
+              maxWidth: '800px',
+              maxHeight: '90vh',
+              p: { xs: spacing.xs, sm: spacing.sm, md: spacing.md },
+              borderRadius: '12px',
+              overflow: 'auto', // Make modal content scrollable
+              outline: 'none',
             }}
           >
-            {isRecording && recordingAction === 'speech-to-text' ? <StopIcon /> : <MicIcon />}
-          </IconButton>
-
-          {/* Quick Decline */}
-          <IconButton
-            color="primary"
-            disabled={!selectedEmail}
-            onClick={() => {
-              if (selectedEmail) {
-                setSelectedAction('quick-decline');
-              }
-            }}
-          >
-            <CancelScheduleSendIcon />
-          </IconButton>
-
-          {/* Move to Read */}
-          <IconButton
-            color="primary"
-            disabled={!selectedEmail || isActionInProgress}
-            onClick={() => {
-              if (selectedEmail) {
-                handleActionSelect('move-to-read');
-              }
-            }}
-          >
-            <BookmarkIcon />
-          </IconButton>
-
-          {/* Archive */}
-          <IconButton
-            color="primary"
-            disabled={!selectedEmail}
-            onClick={() => {
-              if (selectedEmail) handleArchive(selectedEmail.id);
-            }}
-          >
-            <ArchiveIcon />
-          </IconButton>
-
-          {/* Task */}
-          <IconButton
-            color="primary"
-            disabled={!selectedEmail}
-            onClick={() => {
-              if (selectedEmail) {
-                setSelectedAction('task');
-              }
-            }}
-          >
-            <TaskAltIcon />
-          </IconButton>
-        </Box>
-      )}
+            {selectedAction && selectedEmail && (
+              <AudioRecorder
+                email={selectedEmail}
+                action={selectedAction}
+                onClose={handleCloseModal}
+                onActionComplete={handleActionComplete}
+              />
+            )}
+          </Paper>
+        </Modal>
+      </Layout>
     </Box>
   );
 };

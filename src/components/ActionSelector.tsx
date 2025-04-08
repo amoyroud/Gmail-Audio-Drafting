@@ -14,7 +14,6 @@ import SmartToyIcon from '@mui/icons-material/SmartToy';
 import CancelScheduleSendIcon from '@mui/icons-material/CancelScheduleSend';
 import BookmarkIcon from '@mui/icons-material/Bookmark';
 import ArchiveIcon from '@mui/icons-material/Archive';
-import AssignmentIcon from '@mui/icons-material/Assignment';
 
 import { EmailActionType } from '../types/types';
 
@@ -172,25 +171,6 @@ const ActionSelector: React.FC<ActionSelectorProps> = ({
             <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
               <ArchiveIcon sx={{ fontSize: { xs: 22, sm: 28 } }} />
               <Typography variant="body2" sx={{ mt: { xs: 0.5, sm: 1 }, fontWeight: 500, fontSize: { xs: '0.7rem', sm: '0.875rem' } }}>Archive</Typography>
-            </Box>
-          </ToggleButton>
-          </span>
-        </Tooltip>
-
-        <Tooltip title="Convert to Task">
-          <span>
-            <ToggleButton 
-            value="task" 
-            aria-label="convert to task"
-            onClick={() => handleDirectClick('task')}
-            sx={{ 
-              minWidth: { xs: '90px', sm: '120px' },
-              p: { xs: 1, sm: 2 }
-            }}
-          >
-            <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
-              <AssignmentIcon sx={{ fontSize: { xs: 22, sm: 28 } }} />
-              <Typography variant="body2" sx={{ mt: { xs: 0.5, sm: 1 }, fontWeight: 500, fontSize: { xs: '0.7rem', sm: '0.875rem' } }}>Task</Typography>
             </Box>
           </ToggleButton>
           </span>

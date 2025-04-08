@@ -78,10 +78,24 @@ export const transcribeSpeech = async (audioBlob: Blob): Promise<string> => {
     
     console.log(`Using file extension: ${fileExtension} for MIME type: ${mimeType}`);
     
-    // Append file with proper extension
+    // Make sure we're sending a valid audio file
+    // Check blob size and adjust if needed
+    if (audioBlob.size === 0) {
+      throw new Error('Audio recording is empty. Please try again.');
+    }
+    
+    // For very large files, you might need to adjust or compress
+    if (audioBlob.size > 25 * 1024 * 1024) { // > 25MB
+      console.warn('Audio file is very large, which might cause API issues');
+    }
+    
+    // Append file with proper extension and required model_id
     formData.append('file', audioBlob, `audio.${fileExtension}`);
     formData.append('model_id', 'scribe_v1');
 
+    // Log the form data contents without iterating
+    console.log('FormData contains file and model_id fields');
+    
     console.log('Making request to ElevenLabs API...');
     console.log('API URL:', `${ELEVENLABS_API_URL}/speech-to-text`);
     console.log('API Key present:', !!ELEVENLABS_API_KEY);
@@ -95,6 +109,7 @@ export const transcribeSpeech = async (audioBlob: Blob): Promise<string> => {
           'xi-api-key': ELEVENLABS_API_KEY,
           'Accept': 'application/json',
         },
+        timeout: 30000, // 30 second timeout for larger files
       }
     );
 
@@ -123,7 +138,12 @@ export const transcribeSpeech = async (audioBlob: Blob): Promise<string> => {
         throw new Error('Authentication failed. Please check your ElevenLabs API key.');
       }
       
-      const message = data?.detail || data?.message || 'Please try again.';
+      if (status === 400) {
+        console.error('Bad Request Error. Full details:', error.response?.data);
+        throw new Error('Audio format issue. Please try speaking more clearly or for a longer duration.');
+      }
+      
+      const message = data?.detail || data?.message || JSON.stringify(data) || 'Please try again.';
       throw new Error(`Transcription failed: ${message}`);
     }
     

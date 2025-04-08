@@ -38,12 +38,10 @@ export interface TodoTask {
 }
 
 export type EmailActionType = 
-  | 'speech-to-text'      // Direct speech to text without AI
-  | 'ai-draft'            // Current AI drafting functionality
-  | 'quick-decline'       // Use template to decline
-  | 'move-to-read'        // Move to "To Read" label
-  | 'archive'             // Archive the email
-  | 'task';               // Convert email to task
+  | 'speech-to-text'
+  | 'quick-decline'
+  | 'move-to-read'
+  | 'archive';
 
 export interface EmailTemplate {
   id: string;
@@ -57,9 +55,15 @@ export interface EmailTemplate {
 export interface EmailAction {
   type: EmailActionType;
   email: Email;
-  template?: EmailTemplate;
   transcription?: string;
-  draft?: string;
+  enhance?: boolean;
+  template?: {
+    id: string;
+    name: string;
+    body: string;
+    subject: string;
+    type: string;
+  };
 }
 
 export interface ActionResult {
