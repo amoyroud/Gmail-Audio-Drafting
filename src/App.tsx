@@ -29,43 +29,67 @@ const ProtectedRoute = ({ children }: { children: React.ReactNode }) => {
 
   // Check authentication on mount and listen for changes
   useEffect(() => {
-    console.log('ProtectedRoute: Checking authentication');
+    console.log('ProtectedRoute: Checking authentication on component mount');
     
-    // Initial auth check
-    const authStatus = isSignedIn();
-    console.log('ProtectedRoute: Initial auth status is', authStatus);
-    setAuthenticated(authStatus);
-    setLoading(false);
+    // Initial auth check - now async
+    const checkAuth = async () => {
+      console.log('ProtectedRoute: Performing initial auth check with isSignedIn()');
+      try {
+        const authStatus = await isSignedIn();
+        console.log('ProtectedRoute: Initial auth status is', authStatus);
+        
+        if (authStatus) {
+          console.log('ProtectedRoute: User is authenticated, will render protected content');
+        } else {
+          console.log('ProtectedRoute: User is not authenticated, will redirect');
+        }
+        
+        setAuthenticated(authStatus);
+      } catch (error) {
+        console.error('ProtectedRoute: Error checking authentication', error);
+        setAuthenticated(false);
+      } finally {
+        setLoading(false);
+      }
+    };
+    
+    checkAuth();
     
     // Set up listener for auth changes
     const handleAuthChange = () => {
-      console.log('ProtectedRoute: Authentication event received');
+      console.log('ProtectedRoute: Authentication event received (gmail_authenticated)');
       setAuthenticated(true);
     };
     
     const handleSignOut = () => {
-      console.log('ProtectedRoute: Sign out event received');
+      console.log('ProtectedRoute: Sign out event received (gmail_signed_out)');
       setAuthenticated(false);
       navigate('/login', { replace: true });
     };
     
+    console.log('ProtectedRoute: Adding event listeners for auth changes');
     window.addEventListener('gmail_authenticated', handleAuthChange);
     window.addEventListener('gmail_signed_out', handleSignOut);
     
     return () => {
+      console.log('ProtectedRoute: Removing event listeners for auth changes');
       window.removeEventListener('gmail_authenticated', handleAuthChange);
       window.removeEventListener('gmail_signed_out', handleSignOut);
     };
   }, [navigate]);
 
   if (loading) {
+    console.log('ProtectedRoute: Still loading, showing loading screen');
     return <LoadingScreen />;
   }
 
   if (!authenticated) {
     console.log('ProtectedRoute: Not authenticated, redirecting to landing');
     // Pass state to indicate if this was due to session expiry
-    const state = window.sessionStorage.getItem('sessionExpired') ? { sessionExpired: true } : undefined;
+    const sessionExpired = window.sessionStorage.getItem('sessionExpired');
+    console.log('ProtectedRoute: Session expired flag is present:', !!sessionExpired);
+    
+    const state = sessionExpired ? { sessionExpired: true } : undefined;
     window.sessionStorage.removeItem('sessionExpired'); // Clear the flag
     return <Navigate to="/" state={state} replace />;
   }

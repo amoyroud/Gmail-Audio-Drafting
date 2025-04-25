@@ -23,7 +23,7 @@ const LoginPage: React.FC = () => {
         console.log('LoginPage: Gmail client initialized');
         
         // Check if already authenticated
-        const authenticated = isSignedIn();
+        const authenticated = await isSignedIn();
         console.log('LoginPage: Auth status is', authenticated);
         
         if (authenticated) {

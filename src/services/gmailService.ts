@@ -81,55 +81,104 @@ export const initGmailClient = async (): Promise<void> => {
   // Check if we have a valid token before initializing
   const token = localStorage.getItem(TOKEN_STORAGE_KEY);
   const expiry = localStorage.getItem(TOKEN_EXPIRY_KEY);
-  if (token && expiry && Date.now() < parseInt(expiry)) {
-    console.log('initGmailClient: Found valid token');
+  console.log('initGmailClient: Stored token exists:', !!token, 'expiry exists:', !!expiry);
+  
+  let hasValidToken = false;
+  if (token && expiry) {
+    const now = Date.now();
+    const expiryTime = parseInt(expiry);
+    const isValid = now < expiryTime;
+    console.log('initGmailClient: Token valid check:', isValid, 'current time:', now, 'expiry time:', expiryTime, 'diff in seconds:', (expiryTime - now)/1000);
+    
+    if (isValid) {
+      console.log('initGmailClient: Found valid token');
+      hasValidToken = true;
+    } else {
+      console.log('initGmailClient: Token expired, will need to refresh');
+    }
+  } else {
+    console.log('initGmailClient: No stored token found');
   }
   
   isInitializing = true;
   initPromise = new Promise<void>(async (resolve, reject) => {
     try {
       if (!CLIENT_ID || !API_KEY) {
+        console.error('initGmailClient: Missing required environment variables, CLIENT_ID exists:', !!CLIENT_ID, 'API_KEY exists:', !!API_KEY);
         throw new Error('Missing required environment variables');
       }
 
       // Load Google Identity Services
+      console.log('initGmailClient: Loading Google Identity Services');
       await loadGisScript();
+      console.log('initGmailClient: Google Identity Services loaded successfully');
 
       // Load GAPI first
+      console.log('initGmailClient: Loading Google API client (gapi)');
       await new Promise<void>((resolveGapi, rejectGapi) => {
         const script = document.createElement('script');
         script.src = 'https://apis.google.com/js/api.js';
         script.async = true;
         script.defer = true;
         script.onload = () => {
+          console.log('initGmailClient: GAPI script loaded, initializing client');
           window.gapi.load('client', async () => {
             try {
+              console.log('initGmailClient: Initializing GAPI client with API key');
               await window.gapi.client.init({
                 apiKey: API_KEY,
                 discoveryDocs: ['https://www.googleapis.com/discovery/v1/apis/gmail/v1/rest']
               });
+              console.log('initGmailClient: GAPI client initialized successfully');
               resolveGapi();
             } catch (error) {
+              console.error('initGmailClient: Error initializing GAPI client:', error);
               rejectGapi(error);
             }
           });
         };
-        script.onerror = () => rejectGapi(new Error('Failed to load GAPI script'));
+        script.onerror = () => {
+          console.error('initGmailClient: Failed to load GAPI script');
+          rejectGapi(new Error('Failed to load GAPI script'));
+        };
         document.head.appendChild(script);
       });
+      console.log('initGmailClient: GAPI loaded successfully');
+
+      // If we have a valid token, set it and consider initialization complete
+      if (hasValidToken && token) {
+        console.log('initGmailClient: Using existing valid token, skipping OAuth flow');
+        window.gapi.client.setToken({
+          access_token: token
+        });
+        window.googleAuthInitialized = true;
+        
+        // Verify the token with a test request
+        try {
+          await window.gapi.client.gmail.users.getProfile({ userId: 'me' });
+          console.log('initGmailClient: Existing token verified successfully');
+          resolve();
+          return;
+        } catch (error) {
+          console.error('initGmailClient: Error verifying existing token:', error);
+          // Token might be invalid despite expiry time, continue with normal flow
+        }
+      }
 
       // Initialize the tokenClient
+      console.log('initGmailClient: Initializing token client with scopes:', GMAIL_SCOPES.join(' '));
       window.tokenClient = window.google.accounts.oauth2.initTokenClient({
         client_id: CLIENT_ID,
         scope: GMAIL_SCOPES.join(' '),
         callback: async (tokenResponse: any) => {
           if (tokenResponse.error) {
-            console.error('Token error:', tokenResponse);
+            console.error('initGmailClient: Token error:', tokenResponse);
             reject(tokenResponse);
             return;
           }
 
           try {
+            console.log('initGmailClient: Token received, setting access token');
             // Set the token
             window.gapi.client.setToken({
               access_token: tokenResponse.access_token
@@ -139,29 +188,40 @@ export const initGmailClient = async (): Promise<void> => {
             const expiresIn = tokenResponse.expires_in || 3600; // Default to 1 hour
             const expiryTime = Date.now() + (expiresIn * 1000);
             
+            console.log('initGmailClient: Storing token with expiry in', expiresIn, 'seconds');
             localStorage.setItem(TOKEN_STORAGE_KEY, tokenResponse.access_token);
             localStorage.setItem(TOKEN_EXPIRY_KEY, expiryTime.toString());
             window.googleAuthInitialized = true;
             
             // Get and store user email
             try {
+              console.log('initGmailClient: Fetching user profile');
               const profile = await window.gapi.client.gmail.users.getProfile({ userId: 'me' });
               if (profile?.result?.emailAddress) {
+                console.log('initGmailClient: User email fetched:', profile.result.emailAddress);
                 localStorage.setItem(USER_EMAIL_KEY, profile.result.emailAddress);
               }
             } catch (e) {
-              console.error('Error fetching user profile:', e);
+              console.error('initGmailClient: Error fetching user profile:', e);
             }
             
+            console.log('initGmailClient: Initialization complete');
             resolve();
           } catch (error) {
+            console.error('initGmailClient: Error in token callback:', error);
             reject(error);
           }
         }
       });
 
-      // Request an access token
-      window.tokenClient.requestAccessToken();
+      // Only request a new access token if we don't have a valid one
+      if (!hasValidToken) {
+        console.log('initGmailClient: Requesting access token');
+        window.tokenClient.requestAccessToken();
+      } else {
+        console.log('initGmailClient: Using existing token, no need to request new one');
+        resolve();
+      }
     } catch (error) {
       console.error('Error in initGmailClient:', error);
       reject(error);
@@ -214,10 +274,6 @@ export const signIn = async (): Promise<void> => {
           // Token has expired or is about to expire
           localStorage.removeItem(TOKEN_STORAGE_KEY);
           localStorage.removeItem(TOKEN_EXPIRY_KEY);
-          localStorage.removeItem(USER_EMAIL_KEY);
-          // Set session expired flag before triggering sign out
-          window.sessionStorage.setItem('sessionExpired', 'true');
-          window.dispatchEvent(new Event('gmail_signed_out'));
         }
       } else if (storedToken && tokenExpiry) {
         console.log('Token expired, requesting new token');
@@ -456,34 +512,92 @@ export const signOut = async (): Promise<void> => {
 /**
  * Check if user is signed in with a valid token and restore session if valid
  */
-export const isSignedIn = (): boolean => {
+export const isSignedIn = async (): Promise<boolean> => {
+  console.log('isSignedIn: Checking if user is signed in');
   const storedToken = localStorage.getItem(TOKEN_STORAGE_KEY);
   const expiry = localStorage.getItem(TOKEN_EXPIRY_KEY);
   
+  console.log('isSignedIn: Token exists:', !!storedToken, 'Expiry exists:', !!expiry);
+  
   if (!storedToken || !expiry) {
+    console.log('isSignedIn: Missing token or expiry, returning false');
     return false;
   }
   
   // Check if token is expired or about to expire (within 5 minutes)
   const expiryTime = parseInt(expiry);
+  const now = Date.now();
   const fiveMinutes = 5 * 60 * 1000;
-  const isValid = Date.now() < (expiryTime - fiveMinutes);
+  const isValid = now < (expiryTime - fiveMinutes);
+  
+  console.log('isSignedIn: Token expiry check - Current time:', now, 
+              'Expiry time:', expiryTime, 
+              'Time remaining (seconds):', (expiryTime - now)/1000, 
+              'Is valid (with 5-min buffer):', isValid);
   
   if (!isValid) {
     // Clear invalid token
+    console.log('isSignedIn: Token is expired or expiring soon, clearing stored tokens');
     localStorage.removeItem(TOKEN_STORAGE_KEY);
     localStorage.removeItem(TOKEN_EXPIRY_KEY);
     localStorage.removeItem(USER_EMAIL_KEY);
     return false;
   }
   
-  // Restore token in gapi client if available
-  if (window.gapi?.client) {
-    window.gapi.client.setToken({
-      access_token: storedToken
-    });
+  // Ensure Google API client is initialized before proceeding
+  if (!window.gapi?.client) {
+    console.log('isSignedIn: GAPI client not available, initializing...');
+    try {
+      // Initialize Google API client
+      await initGmailClient();
+      
+      // After initialization, set the token
+      if (window.gapi?.client) {
+        console.log('isSignedIn: GAPI client initialized, setting token');
+        window.gapi.client.setToken({
+          access_token: storedToken
+        });
+        window.googleAuthInitialized = true;
+        console.log('isSignedIn: Token set successfully after initialization');
+      } else {
+        console.error('isSignedIn: Failed to initialize GAPI client');
+        return false;
+      }
+    } catch (error) {
+      console.error('isSignedIn: Error initializing GAPI client:', error);
+      return false;
+    }
+  } else {
+    // GAPI client is available, set the token
+    console.log('isSignedIn: GAPI client available, setting token');
+    try {
+      window.gapi.client.setToken({
+        access_token: storedToken
+      });
+      window.googleAuthInitialized = true;
+      console.log('isSignedIn: Token set successfully');
+    } catch (error) {
+      console.error('isSignedIn: Error setting token in GAPI client:', error);
+      return false;
+    }
   }
   
+  // Verify token actually works with a test request
+  try {
+    console.log('isSignedIn: Verifying token with test request');
+    await window.gapi.client.gmail.users.getProfile({ userId: 'me' });
+    console.log('isSignedIn: Token verification successful');
+  } catch (error) {
+    console.error('isSignedIn: Token verification failed:', error);
+    // Clear invalid token
+    localStorage.removeItem(TOKEN_STORAGE_KEY);
+    localStorage.removeItem(TOKEN_EXPIRY_KEY);
+    localStorage.removeItem(USER_EMAIL_KEY);
+    window.googleAuthInitialized = false;
+    return false;
+  }
+  
+  console.log('isSignedIn: Returning true, user is signed in with valid token');
   return true;
 };
 

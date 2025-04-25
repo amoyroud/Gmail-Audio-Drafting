@@ -15,10 +15,9 @@ const GmailAuth: React.FC<GmailAuthProps> = ({ onAuthStateChange }) => {
     const initialize = async () => {
       try {
         // Check if already signed in before initializing
-        const authStatus = isSignedIn();
+        const authStatus = await isSignedIn();
         if (authStatus) {
           // Already authenticated with a valid token
-          await initGmailClient();
           setAuthenticated(true);
           onAuthStateChange?.(true);
         } else {
