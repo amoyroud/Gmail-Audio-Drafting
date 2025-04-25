@@ -10,6 +10,7 @@ import TestPage from './pages/TestPage';
 import ServiceTester from './components/ServiceTester';
 import SettingsPage from './pages/SettingsPage';
 import TestActionComponentPage from './pages/TestActionComponentPage';
+import FileTranscriptionPage from './pages/FileTranscriptionPage';
 
 // Components
 import Layout from './components/Layout';
@@ -121,6 +122,13 @@ function App() {
             <ProtectedRoute>
               <Layout>
                 <TestActionComponentPage />
+              </Layout>
+            </ProtectedRoute>
+          } />
+          <Route path="/file-transcription" element={
+            <ProtectedRoute>
+              <Layout>
+                <FileTranscriptionPage />
               </Layout>
             </ProtectedRoute>
           } />

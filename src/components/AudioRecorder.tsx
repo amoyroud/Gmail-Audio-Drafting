@@ -165,14 +165,14 @@ const AudioRecorder: React.FC<AudioRecorderProps> = ({
       setSuccess(null);
       setError(null);
       
-      // Automatically start recording when speech-to-text is selected
-      if (initialAction === 'speech-to-text' && !isRecording) {
+      // Automatically start recording when speech-to-text or ai-draft is selected
+      if ((initialAction === 'speech-to-text' || initialAction === 'ai-draft') && !isRecording) {
         // Warm-up phase - initialize microphone before recording
         // Small delay to ensure UI is ready and permissions are granted
         setIsWarmingUp(true);
         setTimeout(() => {
-          // Only start recording if still on speech-to-text action
-          if (selectedAction === 'speech-to-text') {
+          // Only start recording if still on speech-to-text or ai-draft action
+          if (selectedAction === 'speech-to-text' || selectedAction === 'ai-draft') {
             setIsWarmingUp(false);
             startRecording();
           }
@@ -294,7 +294,7 @@ const AudioRecorder: React.FC<AudioRecorderProps> = ({
     try {
       setProcessingAudio(true);
       // MediaRecorder's onstop handler will process the audio
-      mediaRecorderRef.current.stop();
+    mediaRecorderRef.current.stop();
       setIsRecording(false);
       
       // The MediaRecorder.onstop event handler will handle the audio processing
@@ -354,8 +354,11 @@ const AudioRecorder: React.FC<AudioRecorderProps> = ({
     try {
       if (stableEmail) {
         setGeneratingDraft(true);
+        console.log('AudioRecorder.generateReply: Starting AI draft generation...');
+        console.log('AudioRecorder.generateReply: Transcribed text length:', transcribedText.length);
         
         // Execute the AI draft action with speech-to-text type but using the AI generation
+        console.log('AudioRecorder.generateReply: Calling executeAction with enhance=true');
         const result = await executeAction({
           type: 'speech-to-text',
           email: stableEmail,
@@ -364,18 +367,23 @@ const AudioRecorder: React.FC<AudioRecorderProps> = ({
         });
         
         if (result.success && result.data?.draft) {
+          console.log('AudioRecorder.generateReply: AI draft generation successful');
+          console.log('AudioRecorder.generateReply: Generated draft length:', result.data.draft.length);
           setDraftReply(result.data.draft);
           // Make sure we keep the transcription available even after AI enhancement
           setTranscription(transcribedText);
         } else {
+          console.error('AudioRecorder.generateReply: Error response from executeAction:', result);
           setError(`Error generating reply: ${result.message}`);
         }
         
         setGeneratingDraft(false);
         setProcessingAudio(false);
+      } else {
+        console.error('AudioRecorder.generateReply: No email available for generating reply');
       }
     } catch (error: any) {
-      console.error('Error generating reply:', error);
+      console.error('AudioRecorder.generateReply: Error generating reply:', error);
       setError(`Error generating reply: ${error.message || 'Unknown error'}`);
       setGeneratingDraft(false);
       setProcessingAudio(false);
@@ -395,6 +403,14 @@ const AudioRecorder: React.FC<AudioRecorderProps> = ({
         case 'speech-to-text':
           result = await executeAction({
             type: 'speech-to-text',
+            email: stableEmail,
+            transcription: draftReply || transcription
+          });
+          break;
+          
+        case 'ai-draft':
+          result = await executeAction({
+            type: 'ai-draft',
             email: stableEmail,
             transcription: draftReply || transcription
           });
@@ -510,6 +526,8 @@ const AudioRecorder: React.FC<AudioRecorderProps> = ({
     switch (action) {
       case 'speech-to-text':
         return 'Draft saved successfully!';
+      case 'ai-draft':
+        return 'AI Draft created successfully!';
       case 'quick-decline':
         return 'Decline email drafted successfully!';
       case 'move-to-read':
@@ -525,6 +543,8 @@ const AudioRecorder: React.FC<AudioRecorderProps> = ({
     switch (selectedAction) {
       case 'speech-to-text':
         return savingDraft ? 'Saving...' : 'Save as Draft';
+      case 'ai-draft':
+        return savingDraft ? 'Creating AI Draft...' : 'Create AI Draft';
       case 'quick-decline':
         return savingDraft ? 'Saving...' : 'Save Decline Draft';
       case 'move-to-read':
@@ -640,15 +660,15 @@ const AudioRecorder: React.FC<AudioRecorderProps> = ({
             sx={{ 
               display: 'flex', 
               flexDirection: 'column',
-              alignItems: 'center', 
+              alignItems: 'center',
               justifyContent: 'center', 
               py: 3
             }}
           >
             <Box
-              sx={{
-                width: 80,
-                height: 80,
+                  sx={{
+                    width: 80,
+                    height: 80,
                 borderRadius: '50%',
                 bgcolor: 'error.main',
                 display: 'flex',
@@ -756,12 +776,12 @@ const AudioRecorder: React.FC<AudioRecorderProps> = ({
             }}
           >
             <CircularProgress size={40} />
-            <Typography 
-              variant="body2" 
-              sx={{ position: 'absolute', bottom: 20, color: 'text.secondary' }}
-            >
+                <Typography 
+                  variant="body2" 
+                  sx={{ position: 'absolute', bottom: 20, color: 'text.secondary' }}
+                >
               {isWarmingUp ? "Preparing microphone..." : "Starting recording..."}
-            </Typography>
+                </Typography>
           </Box>
         </Paper>
       )}
@@ -786,34 +806,34 @@ const AudioRecorder: React.FC<AudioRecorderProps> = ({
             overflow: 'visible'
           }}
         >
-          <Box sx={{ p: 2 }}>
-            <Typography variant="h6" sx={{ mb: 2 }}>Select Template</Typography>
-            <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
-              Choose a template to use for your email
-            </Typography>
-            
-            <FormControl fullWidth sx={{ mb: 2 }}>
-              <InputLabel>Template</InputLabel>
-              <Select
-                value={selectedTemplateId}
-                onChange={(e: SelectChangeEvent<string>) => {
-                  const templateId = e.target.value;
-                  if (templateId) {
-                    handleTemplateSelect(templateId);
-                  }
-                }}
-                label="Template"
-              >
-                {settings.templates
-                  .filter(template => template.type === 'decline')
-                  .map(template => (
-                    <MenuItem key={template.id} value={template.id}>
-                      {template.name}
-                    </MenuItem>
-                  ))}
-              </Select>
-            </FormControl>
-          </Box>
+              <Box sx={{ p: 2 }}>
+                <Typography variant="h6" sx={{ mb: 2 }}>Select Template</Typography>
+                <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+                  Choose a template to use for your email
+                </Typography>
+                
+                <FormControl fullWidth sx={{ mb: 2 }}>
+                  <InputLabel>Template</InputLabel>
+                  <Select
+                    value={selectedTemplateId}
+                    onChange={(e: SelectChangeEvent<string>) => {
+                      const templateId = e.target.value;
+                      if (templateId) {
+                        handleTemplateSelect(templateId);
+                      }
+                    }}
+                    label="Template"
+                  >
+                    {settings.templates
+                      .filter(template => template.type === 'decline')
+                      .map(template => (
+                        <MenuItem key={template.id} value={template.id}>
+                          {template.name}
+                        </MenuItem>
+                      ))}
+                  </Select>
+                </FormControl>
+              </Box>
         </Paper>
       )}
       
@@ -848,19 +868,19 @@ const AudioRecorder: React.FC<AudioRecorderProps> = ({
               position: 'relative'
             }}
           >
-            <Button
-              variant="contained"
-              color="primary"
-              onClick={performAction}
-              disabled={isPerformingAction || !stableEmail}
-              startIcon={<MicIcon />}
-              sx={{
-                ...primaryButtonStyles,
-                height: 48
-              }}
-            >
-              {isPerformingAction ? 'Moving...' : 'Move Email to Read Later'}
-            </Button>
+              <Button
+                variant="contained"
+                color="primary"
+                onClick={performAction}
+                disabled={isPerformingAction || !stableEmail}
+                startIcon={<MicIcon />}
+                sx={{
+                  ...primaryButtonStyles,
+                  height: 48
+                }}
+              >
+                {isPerformingAction ? 'Moving...' : 'Move Email to Read Later'}
+              </Button>
           </Box>
         </Paper>
       )}
@@ -869,26 +889,26 @@ const AudioRecorder: React.FC<AudioRecorderProps> = ({
       {!isRecording && !processingAudio && !audioBlob && !transcription && selectedAction === 'archive' && (
         <Paper 
           elevation={0}
-          sx={{ 
+            sx={{ 
             p: { xs: spacing.xs, sm: spacing.sm }, 
             mb: 0,
             borderRadius: '12px',
             border: '1px solid',
             borderColor: 'divider',
             backgroundColor: theme => theme.palette.mode === 'dark' ? 'rgba(255,255,255,0.03)' : 'rgba(0,0,0,0.01)',
-            display: 'flex',
-            flexDirection: 'column',
-            alignItems: 'center',
-            justifyContent: 'center',
+              display: 'flex', 
+              flexDirection: 'column',
+              alignItems: 'center', 
+              justifyContent: 'center', 
             position: 'relative',
             minHeight: '40px',
             overflow: 'visible'
-          }}
-        >
-          <Box 
-            sx={{ 
-              display: 'flex', 
-              justifyContent: 'center', 
+            }}
+          >
+            <Box
+              sx={{
+                display: 'flex',
+                justifyContent: 'center',
               alignItems: 'center',
               p: 2,
               flexGrow: 1,
@@ -902,7 +922,7 @@ const AudioRecorder: React.FC<AudioRecorderProps> = ({
               onClick={performAction}
               disabled={isPerformingAction || !stableEmail}
               startIcon={<ArchiveIcon />}
-              sx={{
+            sx={{ 
                 ...primaryButtonStyles,
                 height: 48
               }}
@@ -920,11 +940,12 @@ const AudioRecorder: React.FC<AudioRecorderProps> = ({
           sx={{ 
             p: { xs: spacing.xs, sm: spacing.sm }, 
             mt: spacing.sm, 
-            mb: { xs: 8, sm: 3 }, // Increased bottom margin on mobile to provide space for fixed buttons
+            mb: { xs: 2, sm: 3 }, 
             borderRadius: '12px',
             border: '1px solid',
             borderColor: 'divider',
-            position: 'relative'
+            position: 'relative',
+            overflow: 'hidden' // Ensure no overflow outside the Paper
           }}
         >
           <Box sx={{ 
@@ -959,23 +980,23 @@ const AudioRecorder: React.FC<AudioRecorderProps> = ({
               </Tooltip>
             </Box>
             
-            {selectedAction === 'speech-to-text' && !generatingDraft && draftReply && (
-              <Tooltip title="Enhance with AI">
-                <Button
-                  size="small"
-                  variant="outlined"
-                  color="primary"
-                  onClick={() => {
-                    console.log('Enhance with AI clicked');
-                    generateReply(draftReply);
-                  }}
-                  startIcon={<AutoFixHighIcon />}
-                  sx={{ ml: 1, borderRadius: '8px', fontSize: '0.75rem' }}
-                >
-                  Enhance with AI
-                </Button>
-              </Tooltip>
-            )}
+              {selectedAction === 'speech-to-text' && !generatingDraft && draftReply && (
+                <Tooltip title="Enhance with AI">
+                  <Button
+                    size="small"
+                    variant="outlined"
+                    color="primary"
+                    onClick={() => {
+                      console.log('Enhance with AI clicked');
+                      generateReply(draftReply);
+                    }}
+                    startIcon={<AutoFixHighIcon />}
+                    sx={{ ml: 1, borderRadius: '8px', fontSize: '0.75rem' }}
+                  >
+                    Enhance with AI
+                  </Button>
+                </Tooltip>
+              )}
           </Box>
 
           {generatingDraft ? (
@@ -1012,7 +1033,7 @@ const AudioRecorder: React.FC<AudioRecorderProps> = ({
             />
           ) : (
             <Box 
-              ref={(el) => {
+              ref={(el: HTMLDivElement | null) => {
                 if (el) {
                   console.log('Scrollable box dimensions:', {
                     width: el.clientWidth,
@@ -1032,41 +1053,34 @@ const AudioRecorder: React.FC<AudioRecorderProps> = ({
                 backgroundColor: theme => theme.palette.mode === 'dark' ? 'rgba(255,255,255,0.03)' : 'rgba(0,0,0,0.01)',
                 border: '1px solid',
                 borderColor: 'divider',
-                maxHeight: { xs: 'calc(50vh - 180px)', sm: '60vh' }, // Reduced height to test if that's the issue
-                minHeight: { xs: '150px', sm: '200px' }, // Ensure minimum height
+                height: 'auto',
+                maxHeight: { xs: '40vh', sm: '60vh' }, 
+                minHeight: { xs: '100px', sm: '200px' },
                 overflow: 'auto',
-                overflowY: 'auto', // Changed from 'scroll' to 'auto' for better performance
-                mb: { xs: '150px', sm: 2 }, // Increased bottom margin on mobile even more
-                WebkitOverflowScrolling: 'touch', // Proper camelCase for React
-                position: 'relative', // Ensure proper positioning context
-                flexGrow: 1, // Allow box to grow
-                display: 'flex',
-                flexDirection: 'column',
+                WebkitOverflowScrolling: 'touch',
+                paddingBottom: { xs: '16px', sm: '16px' },
+                marginBottom: { xs: '80px', sm: 0 }, // Add bottom margin on mobile to avoid buttons overlap
+                position: 'relative',
                 '&::-webkit-scrollbar': {
-                  width: '8px',
+                  width: '6px',
+                  height: '6px',
+                  backgroundColor: 'rgba(0,0,0,0.1)',
                 },
                 '&::-webkit-scrollbar-thumb': {
-                  borderRadius: '4px',
-                  backgroundColor: 'rgba(0,0,0,0.2)',
+                  backgroundColor: 'rgba(0,0,0,0.3)',
+                  borderRadius: '3px',
                 },
-              }}
-              onScroll={(e) => {
-                const target = e.currentTarget;
-                console.log('Scroll position:', {
-                  scrollTop: target.scrollTop,
-                  scrollHeight: target.scrollHeight,
-                  clientHeight: target.clientHeight,
-                  atBottom: Math.abs(target.scrollHeight - target.clientHeight - target.scrollTop) < 5,
-                  viewportBottom: window.innerHeight,
-                  elementBottom: target.getBoundingClientRect().bottom
-                });
+                scrollbarWidth: 'thin',
+                scrollbarColor: 'rgba(0,0,0,0.3) rgba(0,0,0,0.1)',
               }}
             >
               <Typography 
                 variant="body2" 
                 sx={{ 
                   whiteSpace: 'pre-wrap',
-                  lineHeight: 1.6
+                  lineHeight: 1.6,
+                  wordBreak: 'break-word',
+                  overflowWrap: 'break-word'
                 }}
               >
                 {draftReply || "Your transcribed text will appear here"}
@@ -1075,8 +1089,8 @@ const AudioRecorder: React.FC<AudioRecorderProps> = ({
           )}
 
           {((draftReply && !generatingDraft) || transcription || selectedAction === 'move-to-read' || selectedAction === 'archive') && (
-            <Box
-              ref={(el) => {
+            <Box 
+              ref={(el: HTMLDivElement | null) => {
                 if (el) {
                   console.log('Button container dimensions:', {
                     width: el.clientWidth,
@@ -1090,21 +1104,23 @@ const AudioRecorder: React.FC<AudioRecorderProps> = ({
               }}
               sx={{
                 display: 'flex',
-                justifyContent: 'flex-end',
-                mt: 2,
-                gap: 1.5,
-                position: { xs: 'fixed', sm: 'relative' },
+                flexDirection: { xs: 'column', sm: 'row' },
+                justifyContent: { xs: 'center', sm: 'flex-end' },
+                alignItems: 'center',
+                mt: { xs: 4, sm: 2 },
+                mb: { xs: 2, sm: 1 },
+                gap: 2,
+                position: { xs: 'sticky', sm: 'relative' },
                 bottom: { xs: 0, sm: 'auto' },
-                left: { xs: 0, sm: 'auto' },
-                right: { xs: 0, sm: 'auto' },
-                width: { xs: '100%', sm: 'auto' },
-                p: { xs: 2, sm: 0 },
-                pb: { xs: 3, sm: 0 }, // Add more bottom padding on mobile
+                width: '100%',
+                py: 2,
                 backgroundColor: { xs: theme => theme.palette.background.default, sm: 'transparent' },
                 borderTop: { xs: '1px solid', sm: 'none' },
                 borderColor: 'divider',
-                zIndex: 100, // Increased z-index to ensure it stays on top
-                boxShadow: { xs: '0px -2px 8px rgba(0,0,0,0.05)', sm: 'none' },
+                zIndex: 2,
+                '& .MuiButton-root': {
+                  width: { xs: '100%', sm: 'auto' },
+                },
               }}
             >
               <Button

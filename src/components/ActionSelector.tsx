@@ -44,8 +44,11 @@ const ActionSelector: React.FC<ActionSelectorProps> = ({
   
   // Handle direct button clicks for immediate execution
   const handleDirectClick = (action: EmailActionType) => {
-    // If the action is already selected, execute it directly
-    if (action === selectedAction && onActionExecute) {
+    // Always select the action
+    onActionSelect(action);
+    
+    // If there's an execute handler, call it
+    if (onActionExecute) {
       onActionExecute(action);
     }
   };
@@ -89,6 +92,7 @@ const ActionSelector: React.FC<ActionSelectorProps> = ({
             <ToggleButton 
             value="speech-to-text" 
             aria-label="speech to text"
+            onClick={() => handleDirectClick('speech-to-text')}
             sx={{ 
               minWidth: { xs: '90px', sm: '120px' },
               p: { xs: 1, sm: 2 }
@@ -107,6 +111,7 @@ const ActionSelector: React.FC<ActionSelectorProps> = ({
             <ToggleButton 
             value="ai-draft" 
             aria-label="ai draft"
+            onClick={() => handleDirectClick('ai-draft')}
             sx={{ 
               minWidth: { xs: '90px', sm: '120px' },
               p: { xs: 1, sm: 2 }
@@ -125,6 +130,7 @@ const ActionSelector: React.FC<ActionSelectorProps> = ({
             <ToggleButton 
             value="quick-decline" 
             aria-label="quick decline"
+            onClick={() => handleDirectClick('quick-decline')}
             sx={{ 
               minWidth: { xs: '90px', sm: '120px' },
               p: { xs: 1, sm: 2 }

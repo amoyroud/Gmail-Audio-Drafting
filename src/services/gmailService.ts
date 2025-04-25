@@ -672,81 +672,95 @@ export const getEmailById = async (emailId: string): Promise<Email> => {
     };
 
     const cleanContent = (content: string): string => {
-  // First extract URLs to preserve them
-  const urls: string[] = [];
-  let cleaned = content.replace(/https?:\/\/[^\s<]+/g, (url) => {
-    urls.push(url);
-    return `__URL${urls.length - 1}__`;
-  });
+      // First extract URLs to preserve them
+      const urls: string[] = [];
+      let cleaned = content.replace(/https?:\/\/[^\s<]+/g, (url) => {
+        urls.push(url);
+        return `__URL${urls.length - 1}__`;
+      });
 
-  // Handle HTML content
-  if (cleaned.includes('<!DOCTYPE html>') || cleaned.includes('<html>') || cleaned.includes('<div')) {
-    // Extract text from HTML while preserving some formatting
-    cleaned = cleaned
-      // Convert common block elements to newlines
-      .replace(/<(?:div|p|h[1-6]|article|section|header|footer)[^>]*>/gi, '\n')
-      .replace(/<\/(?:div|p|h[1-6]|article|section|header|footer)>/gi, '\n')
-      .replace(/<br\s*\/?>/gi, '\n')
+      // Handle HTML content
+      if (cleaned.includes('<!DOCTYPE html>') || cleaned.includes('<html>') || cleaned.includes('<div')) {
+        // Extract text from HTML while preserving some formatting
+        cleaned = cleaned
+          // Convert common block elements to newlines
+          .replace(/<(?:div|p|h[1-6]|article|section|header|footer)[^>]*>/gi, '\n')
+          .replace(/<\/(?:div|p|h[1-6]|article|section|header|footer)>/gi, '\n')
+          .replace(/<br\s*\/?>/gi, '\n')
+          
+          // Handle lists
+          .replace(/<li[^>]*>/gi, '\n• ')
+          .replace(/<\/li>/gi, '')
+          .replace(/<\/?(?:ul|ol)>/gi, '\n')
+          
+          // Special formatting for quoted text (e.g., forwarded messages)
+          .replace(/<blockquote[^>]*>/gi, '\n> ')
+          .replace(/<\/blockquote>/gi, '\n')
+          
+          // Improved handling for inline quote blocks from Gmail
+          .replace(/<div class=["']gmail_quote["'][^>]*>/gi, '\n\n---------- Forwarded message ---------\n')
+          
+          // Preserve some inline formatting
+          .replace(/<(?:b|strong)[^>]*>(.*?)<\/(?:b|strong)>/gi, '*$1*')
+          .replace(/<(?:i|em)[^>]*>(.*?)<\/(?:i|em)>/gi, '_$1_')
+          
+          // Remove remaining HTML tags
+          .replace(/<[^>]+>/g, '');
+      } else {
+        // For plain text, just remove any stray HTML tags
+        cleaned = cleaned.replace(/<[^>]*>/g, '');
+      }
       
-      // Handle lists
-      .replace(/<li[^>]*>/gi, '\n• ')
-      .replace(/<\/li>/gi, '')
-      .replace(/<\/?(?:ul|ol)>/gi, '\n')
+      // Replace HTML entities (common first, then generic)
+      cleaned = cleaned
+        .replace(/&nbsp;/g, ' ')
+        .replace(/&amp;/g, '&')
+        .replace(/&lt;/g, '<')
+        .replace(/&gt;/g, '>')
+        .replace(/&quot;/g, '"')
+        .replace(/&apos;/g, "'")
+        .replace(/&#x([0-9A-Fa-f]+);/g, (_, hex) => String.fromCharCode(parseInt(hex, 16)))
+        .replace(/&#([0-9]+);/g, (_, dec) => String.fromCharCode(parseInt(dec, 10)))
+        .replace(/&[#A-Za-z0-9]+;/g, ' '); // Replace any remaining entities with space
       
-      // Special formatting
-      .replace(/<hr[^>]*>/gi, '\n---\n')
-      .replace(/<blockquote[^>]*>/gi, '\n> ')
-      .replace(/<\/blockquote>/gi, '\n')
+      // Format common patterns in forwarded emails
+      cleaned = cleaned
+        // Preserve On DATE, NAME wrote: format commonly used in email replies
+        .replace(/On ([^,]+), ([^<]+)(<[^>]+>)? wrote:/g, '\n\nOn $1, $2 wrote:\n>')
+        // Format typical email signature dividers
+        .replace(/^-- $/gm, '--')
+        // Ensure forwarded message headers are formatted properly
+        .replace(/From: /gm, '\nFrom: ')
+        .replace(/To: /gm, '\nTo: ')
+        .replace(/Date: /gm, '\nDate: ')
+        .replace(/Subject: /gm, '\nSubject: ');
       
-      // Preserve some inline formatting
-      .replace(/<(?:b|strong)[^>]*>(.*?)<\/(?:b|strong)>/gi, '*$1*')
-      .replace(/<(?:i|em)[^>]*>(.*?)<\/(?:i|em)>/gi, '_$1_')
+      // Remove email metadata while preserving content
+      cleaned = cleaned
+        .replace(/Content-Type:[^\n]*\n/g, '')
+        .replace(/Content-Transfer-Encoding:[^\n]*\n/g, '')
+        .replace(/--[0-9a-zA-Z]+(?:-)*(?:[0-9a-zA-Z]+)*$/gm, '') // Remove MIME boundaries
+        .replace(/charset=[^\n]*\n/g, '')
+        .replace(/=\r\n/g, '') // Remove quoted-printable line breaks
+        .replace(/=[0-9A-F]{2}/g, ''); // Remove quoted-printable hex codes
       
-      // Remove remaining HTML tags
-      .replace(/<[^>]+>/g, '');
-  } else {
-    // For plain text, just remove any stray HTML tags
-    cleaned = cleaned.replace(/<[^>]*>/g, '');
-  }
-  
-  // Replace HTML entities (common first, then generic)
-  cleaned = cleaned
-    .replace(/&nbsp;/g, ' ')
-    .replace(/&amp;/g, '&')
-    .replace(/&lt;/g, '<')
-    .replace(/&gt;/g, '>')
-    .replace(/&quot;/g, '"')
-    .replace(/&apos;/g, "'")
-    .replace(/&#x([0-9A-Fa-f]+);/g, (_, hex) => String.fromCharCode(parseInt(hex, 16)))
-    .replace(/&#([0-9]+);/g, (_, dec) => String.fromCharCode(parseInt(dec, 10)))
-    .replace(/&[#A-Za-z0-9]+;/g, ' '); // Replace any remaining entities with space
-  
-  // Remove email metadata while preserving content
-  cleaned = cleaned
-    .replace(/Content-Type:[^\n]*\n/g, '')
-    .replace(/Content-Transfer-Encoding:[^\n]*\n/g, '')
-    .replace(/--[0-9a-zA-Z]+(?:-)*(?:[0-9a-zA-Z]+)*$/gm, '') // Remove MIME boundaries
-    .replace(/charset=[^\n]*\n/g, '')
-    .replace(/=\r\n/g, '') // Remove quoted-printable line breaks
-    .replace(/=[0-9A-F]{2}/g, ''); // Remove quoted-printable hex codes
-  
-  // Restore URLs with proper formatting
-  urls.forEach((url, index) => {
-    cleaned = cleaned.replace(`__URL${index}__`, url);
-  });
+      // Restore URLs with proper formatting
+      urls.forEach((url, index) => {
+        cleaned = cleaned.replace(`__URL${index}__`, url);
+      });
 
-  // Clean up line breaks and whitespace while preserving formatting
-  return cleaned
-    .split(/\r?\n/) // Split on both \r\n and \n
-    .filter(line => 
-      !line.startsWith('Content-') && 
-      !line.startsWith('--') && 
-      !line.includes('charset=')
-    )
-    .map(line => line.trimRight()) // Only trim right to preserve indentation
-    .join('\n')
-    .replace(/\n{3,}/g, '\n\n') // Replace multiple blank lines with double line break
-    .trim();
+      // Clean up line breaks and whitespace while preserving formatting
+      return cleaned
+        .split(/\r?\n/) // Split on both \r\n and \n
+        .filter(line => 
+          !line.startsWith('Content-') && 
+          !line.startsWith('--') && 
+          !line.includes('charset=')
+        )
+        .map(line => line.trimRight()) // Only trim right to preserve indentation
+        .join('\n')
+        .replace(/\n{3,}/g, '\n\n') // Replace multiple blank lines with double line break
+        .trim();
     };
 
     // Get raw content and clean it

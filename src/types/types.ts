@@ -39,6 +39,7 @@ export interface TodoTask {
 
 export type EmailActionType = 
   | 'speech-to-text'
+  | 'ai-draft'
   | 'quick-decline'
   | 'move-to-read'
   | 'archive';

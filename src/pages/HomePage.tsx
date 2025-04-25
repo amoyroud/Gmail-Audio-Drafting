@@ -39,7 +39,7 @@ import AssignmentIcon from '@mui/icons-material/Assignment';
 import RefreshIcon from '@mui/icons-material/Refresh';
 
 // Services
-import { archiveEmail, fetchEmails, getEmailById, getTotalEmailCount, moveToRead, type EmailsResponse } from '../services/gmailService';
+import { archiveEmail, fetchEmails, getEmailById, getTotalEmailCount, moveToRead, signOut, type EmailsResponse } from '../services/gmailService';
 import { Email, EmailActionType, TodoTask } from '../types/types';
 import AudioRecorder from '../components/AudioRecorder';
 import ActionSelector from '../components/ActionSelector';
@@ -49,6 +49,9 @@ import EmptyState from '../components/EmptyState';
 import { useEmail } from '../context/EmailContext';
 import { fixEncodingIssues } from '../utils/textFormatter';
 import Layout from '../components/Layout';
+import Header from '../components/Header';
+import EmailList from '../components/EmailList';
+import EmailContent from '../components/EmailContent';
 
 interface HomePageProps {}
 
@@ -57,6 +60,10 @@ const HomePage: React.FC<HomePageProps> = () => {
   const theme = useTheme();
   const isMobile = useMediaQuery(theme.breakpoints.down('sm'));
   const [isAuthenticated, setIsAuthenticated] = useState(false);
+  
+  // Constants
+  const sidebarWidth = '350px';
+  const spacing = { xs: 2, sm: 3, md: 4 };
   
   const [emails, setEmails] = useState<Email[]>([]);
   const [nextPageToken, setNextPageToken] = useState<string | null>(null);
@@ -327,6 +334,10 @@ const HomePage: React.FC<HomePageProps> = () => {
       } else if (action === 'move-to-read') {
         await handleMoveToRead(selectedEmail.id);
         return { success: true, message: 'Email moved to To Read folder' };
+      } else if (action === 'speech-to-text' || action === 'ai-draft' || action === 'quick-decline') {
+        // Open modal for these actions
+        setShowModal(true);
+        return { success: true, message: 'Opening action modal' };
       }
       // Other actions (speech-to-text, quick-decline) will be handled by AudioRecorder
     }
@@ -358,8 +369,7 @@ const HomePage: React.FC<HomePageProps> = () => {
     setShowModal(false);
   };
 
-  const handleActionComplete = (action: EmailActionType) => {
-    setSelectedAction(action);
+  const handleActionComplete = () => {
     setShowModal(false);
   };
 
@@ -436,9 +446,9 @@ const HomePage: React.FC<HomePageProps> = () => {
   }
 
   return (
-    <Box
-      sx={{
-        display: 'flex',
+        <Box 
+          sx={{
+                          display: 'flex',
         flexDirection: 'column',
         minHeight: '100vh',
         maxWidth: '100vw',
@@ -454,30 +464,29 @@ const HomePage: React.FC<HomePageProps> = () => {
 
       <Box
         id="main-content-container"
-        sx={{
+                          sx={{
           flexGrow: 1,
           display: 'flex',
           flexDirection: { xs: 'column', md: 'row' },
-          overflow: 'hidden',
+                            overflow: 'hidden',
         }}
       >
         <Box
-          sx={{
+                          sx={{
             width: { xs: '100%', md: sidebarWidth },
-            display: { xs: showEmailList || !selectedEmail ? 'block' : 'none', md: 'block' },
+            display: { xs: showEmailList || !selectedEmail ? 'flex' : 'none', md: 'flex' },
             borderRight: { xs: 'none', md: '1px solid' },
             borderColor: 'divider',
             height: { xs: 'auto', md: 'calc(100vh - 64px)' },
-            overflow: 'hidden',
-            display: 'flex',
+                            overflow: 'hidden',
             flexDirection: 'column'
           }}
         >
           {/* Sidebar content */}
           <Box
-            sx={{
+                        sx={{
               p: { xs: spacing.xs, md: spacing.sm },
-              display: 'flex',
+                          display: 'flex',
               justifyContent: 'space-between',
               alignItems: 'center',
               borderBottom: '1px solid',
@@ -489,24 +498,24 @@ const HomePage: React.FC<HomePageProps> = () => {
             </Typography>
             <Box sx={{ display: 'flex', gap: 1 }}>
               <Tooltip title="Refresh">
-                <IconButton 
+                        <IconButton
                   onClick={handleRefreshEmails}
                   disabled={refreshingEmails}
-                  size="small"
-                >
+                          size="small"
+                        >
                   {refreshingEmails ? (
                     <CircularProgress size={20} />
-                  ) : (
+                          ) : (
                     <RefreshIcon fontSize="small" />
-                  )}
-                </IconButton>
+                          )}
+                        </IconButton>
               </Tooltip>
-            </Box>
-          </Box>
+                      </Box>
+        </Box>
 
           {/* Email list section - keep it scrollable */}
-          <Box
-            sx={{
+          <Box 
+            sx={{ 
               overflowY: 'auto',
               flexGrow: 1,
               height: { xs: 'calc(100vh - 180px)', md: 'calc(100vh - 128px)' }
@@ -537,13 +546,13 @@ const HomePage: React.FC<HomePageProps> = () => {
                   </Button>
                 )}
               </Box>
-            )}
-          </Box>
-        </Box>
+                        )}
+                      </Box>
+                    </Box>
 
         {/* Email content section - make sure it's scrollable */}
         <Box
-          sx={{
+                      sx={{ 
             flexGrow: 1,
             display: { xs: !showEmailList && selectedEmail ? 'block' : 'none', md: 'block' },
             height: { xs: 'calc(100vh - 64px)', md: 'calc(100vh - 64px)' },
@@ -558,11 +567,11 @@ const HomePage: React.FC<HomePageProps> = () => {
               goBack={() => setSelectedEmail(null)}
             />
           ) : (
-            <Box
-              sx={{
-                display: 'flex',
-                justifyContent: 'center',
-                alignItems: 'center',
+        <Box
+          sx={{
+            display: 'flex',
+            justifyContent: 'center',
+            alignItems: 'center',
                 height: '100%',
                 p: spacing.md,
               }}
@@ -570,45 +579,43 @@ const HomePage: React.FC<HomePageProps> = () => {
               <Typography color="text.secondary" align="center">
                 Select an email to view its content
               </Typography>
-            </Box>
-          )}
+        </Box>
+      )}
         </Box>
       </Box>
 
       {/* Audio recording modal */}
-      <Layout activeTab="home">
-        <Modal
-          open={showModal}
-          onClose={handleCloseModal}
-          aria-labelledby="modal-title"
+      <Modal
+        open={showModal}
+        onClose={handleCloseModal}
+        aria-labelledby="modal-title"
           sx={{
             display: 'flex',
             alignItems: 'center',
-            justifyContent: 'center',
+          justifyContent: 'center',
+        }}
+      >
+        <Paper
+            sx={{
+            width: { xs: '95%', sm: '90%', md: '80%', lg: '70%' },
+            maxWidth: '800px',
+            maxHeight: '90vh',
+            p: { xs: spacing.xs, sm: spacing.sm, md: spacing.md },
+            borderRadius: '12px',
+            overflow: 'auto', // Make modal content scrollable
+            outline: 'none',
           }}
         >
-          <Paper
-            sx={{
-              width: { xs: '95%', sm: '90%', md: '80%', lg: '70%' },
-              maxWidth: '800px',
-              maxHeight: '90vh',
-              p: { xs: spacing.xs, sm: spacing.sm, md: spacing.md },
-              borderRadius: '12px',
-              overflow: 'auto', // Make modal content scrollable
-              outline: 'none',
-            }}
-          >
-            {selectedAction && selectedEmail && (
-              <AudioRecorder
-                email={selectedEmail}
-                action={selectedAction}
-                onClose={handleCloseModal}
-                onActionComplete={handleActionComplete}
-              />
-            )}
-          </Paper>
-        </Modal>
-      </Layout>
+          {selectedAction && selectedEmail && (
+            <AudioRecorder
+              selectedEmail={selectedEmail}
+              initialAction={selectedAction}
+              onDraftSaved={handleCloseModal}
+              onActionComplete={handleActionComplete}
+            />
+          )}
+        </Paper>
+      </Modal>
     </Box>
   );
 };

@@ -48,6 +48,13 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
     window.location.href = '/settings';
   };
 
+  const handleFileTranscriptionClick = () => {
+    handleMenuClose();
+    console.log('Navigating to file transcription page');
+    // Force hard navigation to ensure it works
+    window.location.href = '/file-transcription';
+  };
+
   return (
     <Box sx={{ 
       display: 'flex', 
@@ -116,6 +123,8 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
             onClose={handleMenuClose}
           >
             <MenuItem onClick={handleSettingsClick}>Settings</MenuItem>
+            <MenuItem onClick={handleFileTranscriptionClick}>File Transcription</MenuItem>
+            <Divider />
             <MenuItem onClick={handleLogout}>Logout</MenuItem>
           </Menu>
         </Toolbar>
@@ -169,21 +178,25 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
           <Box sx={{
             width: '100%',
             maxWidth: '600px',
-            maxHeight: '90vh', 
-            overflow: 'auto',
+            height: '80vh',
+            overflowY: 'scroll',
             bgcolor: 'background.paper',
             borderRadius: '8px',
             p: { xs: 1, sm: spacing.xs },
             boxShadow: theme.shadows[24],
             m: 1,
-            pb: '100px', // Add extra padding at bottom to ensure send button is accessible
-            // Making scrolling smoother on mobile
-            '-webkit-overflow-scrolling': 'touch',
-            // Ensure proper scroll behavior on iOS
-            display: 'flex',
-            flexDirection: 'column',
-            // Prevent overscroll behavior issues
-            overscrollBehavior: 'contain',
+            pb: { xs: 4, sm: 3 },
+            WebkitOverflowScrolling: 'touch',
+            '&::-webkit-scrollbar': {
+              width: '6px',
+              backgroundColor: 'rgba(0,0,0,0.05)',
+            },
+            '&::-webkit-scrollbar-thumb': {
+              backgroundColor: 'rgba(0,0,0,0.2)',
+              borderRadius: '3px',
+            },
+            scrollbarWidth: 'thin',
+            scrollbarColor: 'rgba(0,0,0,0.2) rgba(0,0,0,0.05)',
           }}>
             {selectedEmail ? (
               <AudioRecorder

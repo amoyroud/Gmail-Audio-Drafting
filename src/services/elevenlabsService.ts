@@ -109,7 +109,7 @@ export const transcribeSpeech = async (audioBlob: Blob): Promise<string> => {
           'xi-api-key': ELEVENLABS_API_KEY,
           'Accept': 'application/json',
         },
-        timeout: 30000, // 30 second timeout for larger files
+        timeout: 1800000, // 30 minute timeout for larger files
       }
     );
 
@@ -141,6 +141,12 @@ export const transcribeSpeech = async (audioBlob: Blob): Promise<string> => {
       if (status === 400) {
         console.error('Bad Request Error. Full details:', error.response?.data);
         throw new Error('Audio format issue. Please try speaking more clearly or for a longer duration.');
+      }
+      
+      // Handle timeout errors specifically
+      if (error.code === 'ECONNABORTED') {
+        console.error('Timeout Error. The request took too long to complete.');
+        throw new Error('Transcription timed out. Your audio file may be too large or the service is currently experiencing high load. Please try a shorter recording or try again later.');
       }
       
       const message = data?.detail || data?.message || JSON.stringify(data) || 'Please try again.';
