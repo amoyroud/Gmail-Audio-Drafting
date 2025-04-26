@@ -19,8 +19,11 @@ import EmailIcon from '@mui/icons-material/Email';
 import AlternateEmailIcon from '@mui/icons-material/AlternateEmail';
 import EventIcon from '@mui/icons-material/Event';
 import SubjectIcon from '@mui/icons-material/Subject';
-import { Email, EmailActionType } from '../types/types';
+import MicIcon from '@mui/icons-material/Mic';
+import CancelScheduleSendIcon from '@mui/icons-material/CancelScheduleSend';
+import { Email, EmailActionType, EmailTemplate } from '../types/types';
 import ActionSelector from './ActionSelector';
+import TemplateSelector from './TemplateSelector';
 import { fixEncodingIssues } from '../utils/textFormatter';
 
 // Helper components for different email parts
@@ -120,13 +123,29 @@ const EmailContent: React.FC<EmailContentProps> = ({ email, onAction, goBack }) 
   const theme = useTheme();
   const isMobile = useMediaQuery(theme.breakpoints.down('sm'));
   const [selectedAction, setSelectedAction] = useState<EmailActionType>('speech-to-text');
+  const [expandedView, setExpandedView] = useState(false);
+  const [isTemplateDialogOpen, setIsTemplateDialogOpen] = useState(false);
 
   const handleActionSelect = (action: EmailActionType) => {
     setSelectedAction(action);
   };
 
   const handleActionExecute = (action: EmailActionType) => {
-    onAction(action, email);
+    if (action === 'quick-decline') {
+      setIsTemplateDialogOpen(true);
+    } else {
+      onAction(action, email);
+    }
+  };
+
+  const handleTemplateSelect = (template: EmailTemplate) => {
+    // Pass the selected template to the parent component
+    // For now, we're just closing the dialog and executing the action
+    onAction('quick-decline', email);
+  };
+
+  const toggleExpandedView = () => {
+    setExpandedView(!expandedView);
   };
 
   // Check if text is likely a header of forwarded/replied email
@@ -311,7 +330,10 @@ const EmailContent: React.FC<EmailContentProps> = ({ email, onAction, goBack }) 
           border: '1px solid', 
           borderColor: 'divider',
           borderRadius: '12px',
-          boxShadow: theme.shadows[1]
+          boxShadow: theme.shadows[1],
+          height: 'auto', // Allow natural height
+          display: 'flex',
+          flexDirection: 'column'
         }}
       >
         {/* Email Header Section */}
@@ -335,55 +357,44 @@ const EmailContent: React.FC<EmailContentProps> = ({ email, onAction, goBack }) 
             {email.subject}
           </Typography>
           
-          <Box sx={{ mt: 2 }}>
+          <Box sx={{ 
+            display: 'flex',
+            alignItems: { xs: 'flex-start', sm: 'center' },
+            flexDirection: { xs: 'column', sm: 'row' },
+            gap: { xs: 0.5, sm: 2 }
+          }}>
+            {/* From section */}
             <EmailHeaderItem 
               icon={<EmailIcon fontSize="small" sx={{ color: theme.palette.primary.main, opacity: 0.7 }} />}
               label="From"
-              value={email.from.name || email.from.email}
+              value={typeof email.from === 'string' ? email.from : `${email.from.name || ''} <${email.from.email}>`}
             />
             
+            {/* Date section */}
             <Box 
               sx={{ 
                 display: 'flex', 
-                alignItems: 'center', 
-                flexWrap: 'wrap',
-                mt: 1.5
+                alignItems: 'center',
+                color: theme.palette.text.secondary,
+                fontSize: '0.875rem',
+                ml: { xs: 0, sm: 'auto' }
               }}
             >
-              <EventIcon 
-                fontSize="small" 
-                sx={{ 
-                  mr: 1, 
-                  color: theme.palette.success.main, 
-                  opacity: 0.7,
-                  ml: isMobile ? 0 : 0.5
-                }} 
-              />
-              <Typography 
-                variant="body2" 
-                color="text.secondary"
-                sx={{
-                  bgcolor: alpha(theme.palette.background.default, 0.7),
-                  px: 1.5,
-                  py: 0.5,
-                  borderRadius: '4px',
-                  fontWeight: 500
-                }}
-              >
-                {new Date(email.date).toLocaleString()}
-              </Typography>
+              <EventIcon fontSize="small" sx={{ mr: 0.5, opacity: 0.7 }} />
+              {new Date(email.date).toLocaleString()}
             </Box>
           </Box>
         </Box>
-
-        {/* Email Body Section */}
+        
+        {/* Email Body Section - Make sure it's scrollable with controlled height */}
         <Box 
           sx={{ 
             mb: 3,
             px: { xs: 0.5, sm: 1 },
             py: 1,
-            maxHeight: { xs: '50vh', sm: '55vh', md: '60vh' },
+            maxHeight: expandedView ? '100%' : { xs: '50vh', sm: '55vh', md: '60vh' },
             overflow: 'auto',
+            flex: 1,
             '&::-webkit-scrollbar': {
               width: '8px',
               borderRadius: '4px'
@@ -402,6 +413,17 @@ const EmailContent: React.FC<EmailContentProps> = ({ email, onAction, goBack }) 
           }}
         >
           {formattedEmailBody}
+          
+          {/* Show "See more" button if content is likely to be truncated */}
+          {email.body && email.body.length > 1000 && (
+            <Button 
+              variant="text" 
+              onClick={toggleExpandedView} 
+              sx={{ mt: 2, display: 'block', mx: 'auto' }}
+            >
+              {expandedView ? 'Show less' : 'Show more'}
+            </Button>
+          )}
         </Box>
         
         <Divider sx={{ my: 2 }} />
@@ -419,51 +441,49 @@ const EmailContent: React.FC<EmailContentProps> = ({ email, onAction, goBack }) 
           >
             Actions
           </Typography>
-          
-          <ActionSelector
-            selectedAction={selectedAction}
-            onActionSelect={handleActionSelect}
-            onActionExecute={handleActionExecute}
-          />
-        </Box>
-        
-        {/* Legacy buttons as fallback */}
-        <Box 
-          sx={{ 
-            display: 'none', /* Hide the old buttons */
-            justifyContent: 'flex-start', 
-            gap: 2,
-            flexWrap: 'wrap'
-          }}
-        >
-          <Button 
-            variant="contained" 
-            startIcon={<ReplyIcon />}
-            onClick={() => onAction('speech-to-text', email)}
-            sx={{ borderRadius: '8px' }}
-          >
-            Reply
-          </Button>
-          
-          <Button 
-            variant="outlined" 
-            startIcon={<ArchiveIcon />}
-            onClick={() => onAction('archive', email)}
-            sx={{ borderRadius: '8px' }}
-          >
-            Archive
-          </Button>
-          
-          <Button 
-            variant="outlined" 
-            startIcon={<AccessTimeIcon />}
-            onClick={() => onAction('move-to-read', email)}
-            sx={{ borderRadius: '8px' }}
-          >
-            Read Later
-          </Button>
+          <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 2, mb: 2 }}>
+            {[
+              { key: 'speech-to-text', label: 'Speech', icon: <MicIcon /> },
+              { key: 'quick-decline', label: 'Decline', icon: <CancelScheduleSendIcon /> },
+              { key: 'archive', label: 'Archive', icon: <ArchiveIcon /> },
+              { key: 'move-to-read', label: 'Read Later', icon: <AccessTimeIcon /> },
+            ].map(action => (
+              <Button
+                key={action.key}
+                variant={selectedAction === action.key ? 'outlined' : 'text'}
+                color="primary"
+                startIcon={action.icon}
+                onClick={() => {
+                  setSelectedAction(action.key as EmailActionType);
+                  handleActionExecute(action.key as EmailActionType);
+                }}
+                sx={{
+                  minWidth: 140,
+                  borderRadius: 2,
+                  fontSize: '1rem',
+                  fontWeight: 600,
+                  bgcolor: selectedAction === action.key ? theme.palette.action.selected : 'transparent',
+                  borderColor: selectedAction === action.key ? theme.palette.primary.main : undefined,
+                  color: selectedAction === action.key ? theme.palette.primary.main : theme.palette.text.primary,
+                  boxShadow: selectedAction === action.key ? 2 : 'none',
+                  transition: 'all 0.15s',
+                }}
+                aria-label={action.label + (selectedAction === action.key ? ' (Selected)' : '')}
+              >
+                {action.label}
+              </Button>
+            ))}
+          </Box>
         </Box>
       </Paper>
+
+      {/* Template Selector Dialog */}
+      <TemplateSelector
+        isOpen={isTemplateDialogOpen}
+        onClose={() => setIsTemplateDialogOpen(false)}
+        onSelectTemplate={handleTemplateSelect}
+        templateType="decline"
+      />
     </Box>
   );
 };
