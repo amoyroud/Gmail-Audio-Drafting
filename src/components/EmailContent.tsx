@@ -23,7 +23,6 @@ import MicIcon from '@mui/icons-material/Mic';
 import CancelScheduleSendIcon from '@mui/icons-material/CancelScheduleSend';
 import { Email, EmailActionType, EmailTemplate } from '../types/types';
 import ActionSelector from './ActionSelector';
-import TemplateSelector from './TemplateSelector';
 import { fixEncodingIssues } from '../utils/textFormatter';
 import { useEmail } from '../context/EmailContext';
 
@@ -116,16 +115,12 @@ const ForwardedMessageHeader = ({ text }: { text: string }) => {
 
 interface EmailContentProps {
   email: Email;
-  onAction: (action: EmailActionType, email: Email) => void;
-  onTemplateSelected?: (template: EmailTemplate, email: Email) => void;
-  onOpenRecorder?: (action: EmailActionType, email: Email) => void;
+  onOpenRecorder?: (email: Email) => void;
   goBack: () => void;
 }
 
 const EmailContent: React.FC<EmailContentProps> = ({
   email,
-  onAction,
-  onTemplateSelected,
   onOpenRecorder,
   goBack
 }) => {
@@ -133,7 +128,6 @@ const EmailContent: React.FC<EmailContentProps> = ({
   const isMobile = useMediaQuery(theme.breakpoints.down('sm'));
   const [selectedAction, setSelectedAction] = useState<EmailActionType>('speech-to-text');
   const [expandedView, setExpandedView] = useState(false);
-  const [isTemplateDialogOpen, setIsTemplateDialogOpen] = useState(false);
   const { setSelectedEmail } = useEmail();
   
   // Update the EmailContext with the current email
@@ -151,30 +145,14 @@ const EmailContent: React.FC<EmailContentProps> = ({
   const handleActionClick = (action: EmailActionType) => {
     setSelectedAction(action);
 
-    if (action === 'quick-decline') {
-      if (onTemplateSelected) {
-        setIsTemplateDialogOpen(true);
-      } else {
-        console.warn('No onTemplateSelected handler provided for quick-decline');
-      }
-    } else if (action === 'speech-to-text' || action === 'ai-draft') {
+    if (action === 'speech-to-text' || action === 'ai-draft') {
       if (onOpenRecorder) {
-        onOpenRecorder(action, email);
+        onOpenRecorder(email);
       } else {
         console.warn('No onOpenRecorder handler provided');
       }
     } else {
-      onAction(action, email);
-    }
-  };
-
-  const handleTemplateSelect = (template: EmailTemplate) => {
-    setIsTemplateDialogOpen(false);
-    if (onTemplateSelected) {
-      onTemplateSelected(template, email);
-    } else {
-      console.warn('No onTemplateSelected handler, falling back to default onAction');
-      onAction('quick-decline', email);
+      console.log(`Action selected: ${action} - No handler defined here.`);
     }
   };
 
@@ -337,7 +315,7 @@ const EmailContent: React.FC<EmailContentProps> = ({
   }, [email.body, theme]);
 
   return (
-    <Box sx={{ p: { xs: 1.5, sm: 2, md: 3 } }}>
+    <Box sx={{ p: { xs: 2, sm: 3, md: 4 }, height: '100%', display: 'flex', flexDirection: 'column' }}>
       <Box 
         sx={{ 
           display: { xs: 'flex', md: 'none' }, 
@@ -509,14 +487,6 @@ const EmailContent: React.FC<EmailContentProps> = ({
           </Box>
         </Box>
       </Paper>
-
-      {/* Template Selector Dialog */}
-      <TemplateSelector
-        isOpen={isTemplateDialogOpen}
-        onClose={() => setIsTemplateDialogOpen(false)}
-        onSelectTemplate={handleTemplateSelect}
-        templateType="decline"
-      />
     </Box>
   );
 };

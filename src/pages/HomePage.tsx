@@ -51,7 +51,6 @@ import { fixEncodingIssues } from '../utils/textFormatter';
 import Header from '../components/Header';
 import EmailList from '../components/EmailList';
 import EmailContent from '../components/EmailContent';
-import { executeAction } from '../services/actionService';
 import { useEmailActions } from '../context/EmailContext';
 
 interface HomePageProps {}
@@ -75,7 +74,6 @@ const HomePage: React.FC<HomePageProps> = () => {
   const [selectedEmailIndex, setSelectedEmailIndex] = useState<number>(0);
   // Search removed
   // const [searchQuery, setSearchQuery] = useState<string>('');
-  const [selectedAction, setSelectedAction] = useState<EmailActionType>('archive');
   const [isRecording, setIsRecording] = useState(false);
   const [recordingAction, setRecordingAction] = useState<EmailActionType | null>(null);
   const [tasks, setTasks] = useState<TodoTask[]>([]);
@@ -295,7 +293,6 @@ const HomePage: React.FC<HomePageProps> = () => {
       // Reset selected email if it was archived
       if (selectedEmail?.id === emailId) {
         setSelectedEmail(null);
-        setSelectedAction('archive');
       }
       setActionSuccess('Email archived successfully');
       setTimeout(() => setActionSuccess(null), 3000);
@@ -322,7 +319,6 @@ const HomePage: React.FC<HomePageProps> = () => {
       setEmails(prevEmails => prevEmails.filter(email => email.id !== emailId));
       setActionSuccess('Email moved to "To Read" label');
       setTimeout(() => setActionSuccess(null), 3000);
-      setSelectedAction('archive');
     } catch (error) {
       console.error('Error moving email to To Read:', error);
       setError('Failed to move email to To Read. Please try again.');
@@ -344,103 +340,12 @@ const HomePage: React.FC<HomePageProps> = () => {
     setTasks(prevTasks => prevTasks.filter(task => task.id !== taskId));
   };
 
-  // This function will now specifically handle opening the recorder modal
-  const handleOpenRecorder = (action: EmailActionType, email: Email) => {
-    console.log(`HomePage: Opening recorder for action: ${action} on email: ${email.id}`);
-    setSelectedAction(action); // Set the action type for the recorder
-    setSelectedEmail(email);    // Ensure the correct email is selected
-
-    if (isMobile) {
-      setIsRecorderOpen(true); // Use context for mobile bottom bar
-    } else {
-      setShowModal(true);      // Use local state for desktop modal
-    }
-  };
-
-  const handleEmailAction = async (action: EmailActionType, email: Email) => {
-    // This function should ONLY handle non-modal actions now
-    if (action !== 'archive' && action !== 'move-to-read') {
-      console.warn(`handleEmailAction called with unexpected action: ${action}. This should be handled elsewhere.`);
-      return;
-    }
-
-    console.log(`Handling direct action: ${action} for email: ${email.id}`);
-    setIsActionInProgress(true);
-    setActionSuccess(null);
-    setError(null);
-    setPreviousEmailId(email.id);
-
-    try {
-      let result: { success: boolean; message?: string; data?: any };
-      switch (action) {
-        case 'archive':
-          const archiveResult = await archiveEmail(email.id);
-          result = { ...archiveResult, message: archiveResult.success ? 'Email archived' : 'Failed to archive' };
-          break;
-        case 'move-to-read':
-          const moveResult = await moveToRead(email.id);
-          result = { ...moveResult, message: moveResult.success ? 'Email moved to To Read' : 'Failed to move' };
-          break;
-        default:
-          // Should not happen based on the check above
-          result = { success: false, message: 'Unknown direct action' };
-      }
-
-      if (result.success) {
-        console.log('Direct action successful:', result.message);
-        setActionSuccess(result.message || 'Action successful!');
-        setEmails(prev => prev.filter(e => e.id !== email.id));
-        setSelectedEmail(null);
-      } else {
-        console.error('Direct action failed:', result.message);
-        setError(result.message || 'Action failed');
-      }
-    } catch (error) {
-      console.error('Error performing direct email action:', error);
-      setError('An error occurred during the action.');
-    } finally {
-      setIsActionInProgress(false);
-      setTimeout(() => {
-        setActionSuccess(null);
-        setError(null);
-      }, 3000);
-    }
-  };
-
-  const handleTemplateSelected = async (template: EmailTemplate, email: Email) => {
-    console.log('HomePage: Template selected:', template.name, 'for email:', email.id);
-    setIsActionInProgress(true);
-    setActionSuccess(null);
-    setError(null);
-    
-    try {
-      const result = await executeAction({
-        type: 'quick-decline',
-        email: email,
-        template: template
-      });
-
-      if (result.success) {
-        console.log('HomePage: Quick decline successful:', result.message);
-        setActionSuccess(result.message || 'Action successful!');
-        // Remove the email from the list after successful action
-        setEmails(prev => prev.filter(e => e.id !== email.id));
-        setSelectedEmail(null); // Deselect email
-      } else {
-        console.error('HomePage: Quick decline failed:', result.message);
-        setError(result.message || 'Quick decline action failed');
-      }
-    } catch (error) {
-      console.error('HomePage: Error during quick decline action:', error);
-      setError('An error occurred during the action.');
-    } finally {
-      setIsActionInProgress(false);
-      // Optionally reset success/error messages after a delay
-      setTimeout(() => {
-        setActionSuccess(null);
-        setError(null);
-      }, 3000);
-    }
+  // This function now just sets the state to open the modal with the selected email
+  const handleOpenRecorder = (email: Email) => {
+    console.log(`HomePage: Opening recorder modal for email: ${email.id}`);
+    setSelectedEmail(email);    
+    setShowModal(true);         
+    setIsRecorderOpen(true);    
   };
 
   const handleBackButtonClick = () => {
@@ -498,7 +403,10 @@ const HomePage: React.FC<HomePageProps> = () => {
   }, [filteredEmails, isMobile, setPreviousEmailId, getEmailById]);
 
   const handleCloseModal = () => {
+    console.log("Closing modal and resetting states...");
     setShowModal(false);
+    setSelectedEmail(null);
+    setIsRecorderOpen(false);
   };
 
   const handleActionComplete = useCallback((emailId: string) => {
@@ -564,7 +472,6 @@ const HomePage: React.FC<HomePageProps> = () => {
           case 'Enter':
           case ' ':
             // Open action modal with first action mode
-            setSelectedAction('speech-to-text');
             setShowModal(true);
             event.preventDefault();
             break;
@@ -1247,8 +1154,6 @@ const HomePage: React.FC<HomePageProps> = () => {
               )}
               <EmailContent
                 email={selectedEmail}
-                onAction={handleEmailAction}
-                onTemplateSelected={handleTemplateSelected}
                 onOpenRecorder={handleOpenRecorder}
                 goBack={handleBackButtonClick}
               />
@@ -1293,11 +1198,16 @@ const HomePage: React.FC<HomePageProps> = () => {
             outline: 'none',
           }}
         >
-          {selectedAction && selectedEmail && (
+          {selectedEmail && (
             <AudioRecorder
               selectedEmail={selectedEmail}
-              initialAction={selectedAction}
               onDraftSaved={handleCloseModal}
+              onActionComplete={(emailId) => {
+                  console.log(`Action complete for ${emailId}, closing modal.`);
+                  handleCloseModal();
+                  setEmails(prev => prev.filter(e => e.id !== emailId));
+              }}
+              autoStartRecording={true}
             />
           )}
         </Paper>

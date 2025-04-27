@@ -61,6 +61,24 @@ While this project primarily uses `localStorage` for settings currently, this se
 
 ## Features
 
+### Audio Drafting Workflow (Simplified)
+
+1.  **Start Recording:** The user clicks the microphone button or presses the spacebar (when the component is focused) associated with an email.
+2.  **Recording:** The component captures audio input.
+3.  **Stop Recording:** The user clicks the stop button or releases the spacebar.
+4.  **Processing:**
+    *   The recorded audio is sent to the transcription service (`elevenlabsService.transcribeSpeech`).
+    *   During transcription, specific keywords (like an EA name) can trigger actions (e.g., adding the EA's email to the CC list).
+    *   The returned transcription text is then automatically sent to the AI service (`mistralService.generateDraftResponse`) along with context from the original email.
+5.  **Display Draft:** The AI-enhanced draft reply is displayed to the user.
+6.  **User Actions:** The user is presented with the following options:
+    *   **Edit:** Allows the user to modify the generated draft text directly in a text area.
+    *   **Add CC:** Users can search for and add contacts to the CC list using an autocomplete field.
+    *   **Save Draft:** Saves the current draft (edited or original AI-generated) to Gmail using `gmailService.createDraft`.
+    *   **Send:** Sends the current draft (edited or original AI-generated) as an email reply using `gmailService.sendEmail`.
+
+*This flow removes the previous explicit "Enhance with AI" step, making it an integral part of the speech-to-text process.*
+
 ### Add Executive Assistant (EA) via Voice
 
 - **Configuration:** Users can set an "EA Trigger Name/Phrase" and "EA Email Address" in the Settings page (`src/pages/SettingsPage.tsx`).
@@ -73,13 +91,14 @@ While this project primarily uses `localStorage` for settings currently, this se
 
 ## Feature Backlog
 
-- [ ] Basic audio recording and transcription.
-- [ ] Gmail draft creation via API.
+- [X] Basic audio recording and transcription.
+- [X] Gmail draft creation via API.
 - [ ] User authentication (OAuth with Google).
 - [X] Project Documentation Setup (`gmail-audio-drafting.md`).
 - [X] Settings page for configuration (e.g., API keys, EA email).
 - [X] "Add EA" feature triggered by voice command.
 - [X] EA Name Variation Generation & Usage for Robust Detection.
+- [X] Streamlined Audio-to-Draft Workflow (Automatic AI Enhancement).
 - [ ] Error handling and logging (ongoing improvement).
 
 ## Setup and Installation
