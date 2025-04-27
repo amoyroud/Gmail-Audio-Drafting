@@ -29,13 +29,21 @@ import Zoom from '@mui/material/Zoom';
 import LinearProgress from '@mui/material/LinearProgress';
 import Autocomplete from '@mui/material/Autocomplete';
 import Chip from '@mui/material/Chip';
+import DeleteIcon from '@mui/icons-material/Delete';
+import SaveIcon from '@mui/icons-material/Save';
+import { useSettings } from '../services/settingsService';
+import { generateDraftResponse } from '../services/mistralService';
+import { 
+  sendEmail, 
+  createDraft, 
+  archiveEmail
+} from '../services/gmailService';
+import { Email, DraftEmail, EmailActionType, ActionResult } from '../types/types';
+import theme, { ThemeMode } from '../theme/theme';
 
 // Services
 import { transcribeSpeech } from '../services/elevenlabsService';
-import { sendEmail, archiveEmail } from '../services/gmailService';
 import { executeAction } from '../services/actionService';
-import { Email, EmailActionType, ActionResult, DraftEmail } from '../types/types';
-import { useSettings, EmailTemplate } from '../services/settingsService';
 import { searchContacts, Contact } from '../services/contactService';
 
 // Components
@@ -65,7 +73,7 @@ interface AudioRecorderProps {
   selectedEmail: Email;
   onDraftSaved?: () => void;
   initialAction?: EmailActionType;
-  onActionComplete?: () => void;
+  onActionComplete?: (emailId: string) => void;
   isRecordingFromParent?: boolean;
   recordingAction?: EmailActionType | null;
   onRecordingStateChange?: (isRecording: boolean) => void;
@@ -498,7 +506,7 @@ const AudioRecorder: React.FC<AudioRecorderProps> = ({
         case 'ArrowLeft':
           if (currentIndex === 0) {
             // On first action, close modal and return focus
-            if (onActionComplete) onActionComplete();
+            if (onActionComplete) onActionComplete(stableEmail?.id || '');
           } else {
             const prevIndex = (currentIndex - 1 + actions.length) % actions.length;
             setSelectedAction(actions[prevIndex]);
@@ -734,7 +742,7 @@ const AudioRecorder: React.FC<AudioRecorderProps> = ({
             setCcRecipients([]);
             setCcInputValue('');
         }
-        if (onActionComplete) onActionComplete();
+        if (onActionComplete && stableEmail?.id) onActionComplete(stableEmail.id);
       } else {
         setError(result?.message || 'Action failed. Please try again.');
       }
@@ -854,9 +862,30 @@ const AudioRecorder: React.FC<AudioRecorderProps> = ({
       const messageId = await sendEmail(draft);
       
       if (messageId) {
-        setSuccess('Email sent successfully!');
+        setSuccess('Email sent successfully! Archiving original email...'); // Update message
         
-        if (onActionComplete) onActionComplete();
+        // Attempt to archive the ORIGINAL email being replied to
+        if (stableEmail?.id) {
+          try {
+            console.log(`[AudioRecorder] handleSendEmail: Attempting to archive ORIGINAL email ID: ${stableEmail.id}`);
+            const archiveResult = await archiveEmail(stableEmail.id); // Use stableEmail.id
+            if (archiveResult.success) {
+              console.log(`[AudioRecorder] handleSendEmail: Original email ${stableEmail.id} archived successfully.`);
+              setSuccess('Email sent and original email archived!'); // Final success message
+            } else {
+              console.error(`[AudioRecorder] handleSendEmail: Failed to archive original email ${stableEmail.id}:`, archiveResult.data);
+              setSuccess('Email sent successfully (archive failed).'); 
+            }
+          } catch (archiveError) {
+            console.error(`[AudioRecorder] handleSendEmail: Error during archiving original email ${stableEmail.id}:`, archiveError);
+            setSuccess('Email sent successfully (archive error).');
+          }
+        } else {
+          console.error('[AudioRecorder] handleSendEmail: Cannot archive original email, ID is missing.');
+          setSuccess('Email sent successfully (could not archive original - missing ID).');
+        }
+
+        if (onActionComplete && stableEmail?.id) onActionComplete(stableEmail.id);
         setTimeout(() => {
           setAudioBlob(null);
           setTranscription('');

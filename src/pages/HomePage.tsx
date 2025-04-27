@@ -499,8 +499,13 @@ const HomePage: React.FC<HomePageProps> = () => {
     setShowModal(false);
   };
 
-  const handleActionComplete = () => {
+  const handleActionComplete = (emailId: string) => {
+    console.log(`[HomePage] Action complete for email ID: ${emailId}. Updating UI.`);
     setShowModal(false);
+    setEmails(prevEmails => prevEmails.filter(email => email.id !== emailId));
+    if (selectedEmail?.id === emailId) {
+      setSelectedEmail(null);
+    }
   };
 
   const handleRefreshEmails = async () => {
