@@ -6,26 +6,37 @@ body {
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
   background-color: #f5f5f5;
-  overflow: hidden;
-  position: fixed;
+  position: relative;
   width: 100%;
   height: 100%;
+  /* Prevent overscroll bounce effects on mobile */
+  overscroll-behavior: none;
+  /* Prevent text selection on touch */
+  -webkit-touch-callout: none;
+  /* Prevent iOS text size adjust on orientation change */
+  -webkit-text-size-adjust: 100%;
 }
 
 html {
-  overflow: hidden;
+  overflow: auto;
   height: 100%;
+  /* Enable iOS inertia scrolling */
+  -webkit-overflow-scrolling: touch;
 }
 
 #root {
   height: 100%;
-  overflow: hidden;
+  overflow: auto;
 }
 
 /* Custom scrollbar styling for containers */
 .scrollable-container {
-  overflow-y: auto;
+  overflow-y: auto !important;
   scrollbar-width: thin;
+  /* Better scrolling on touch devices */
+  -webkit-overflow-scrolling: touch;
+  /* Set min-height to ensure container is scrollable */
+  min-height: 100px;
 }
 
 .scrollable-container::-webkit-scrollbar {
@@ -46,9 +57,58 @@ html {
   background-color: rgba(0, 0, 0, 0.3);
 }
 
+/* Improve tap targets for mobile */
+.tap-target {
+  min-height: 48px;
+  min-width: 48px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+}
+
+/* Fix input zooming on iOS */
+input, textarea, select, button {
+  font-size: 16px;
+}
+
+/* No text selection during touch operations */
+.no-select {
+  -webkit-user-select: none;
+  -moz-user-select: none;
+  -ms-user-select: none;
+  user-select: none;
+}
+
+/* Add swipe hints for better discoverability */
+.swipe-hint {
+  position: relative;
+  overflow: auto !important;
+  -webkit-overflow-scrolling: touch;
+}
+
+.swipe-hint::after {
+  content: '';
+  position: absolute;
+  width: 40px;
+  height: 100%;
+  right: 0;
+  top: 0;
+  background: linear-gradient(to right, rgba(0,0,0,0), rgba(0,0,0,0.05));
+  pointer-events: none;
+}
+
 code {
   font-family: source-code-pro, Menlo, Monaco, Consolas, 'Courier New',
     monospace;
+}
+
+/* Email list specific styles */
+.email-list-container {
+  overflow-y: auto !important;
+  -webkit-overflow-scrolling: touch;
+  height: 100%;
+  max-height: calc(100vh - 120px);
 }
 
 /* Responsive styles */
@@ -60,6 +120,49 @@ code {
   .desktop-only {
     display: none;
   }
+  
+  /* Improved button sizing for touch */
+  button, .MuiButtonBase-root {
+    min-height: 48px;
+  }
+  
+  /* Prevent pull-to-refresh on mobile browsers */
+  body {
+    overscroll-behavior-y: contain;
+  }
+  
+  /* Fix for iOS viewport height issues */
+  .full-mobile-height {
+    height: 100vh; /* Fallback */
+    height: -webkit-fill-available;
+    height: stretch;
+  }
+  
+  /* Larger hit areas for links */
+  a, a:visited, a:active {
+    padding: 8px 0;
+    display: inline-block;
+  }
+  
+  /* Ensure email list is scrollable on mobile */
+  .MuiList-root {
+    overflow-y: auto !important;
+    -webkit-overflow-scrolling: touch;
+    max-height: calc(100vh - 120px);
+    flex: 1;
+  }
+  
+  /* Fix container issues on mobile */
+  .MuiContainer-root {
+    overflow-y: auto !important;
+    -webkit-overflow-scrolling: touch;
+  }
+  
+  /* Make sure Box containers can scroll */
+  .MuiBox-root.swipe-hint {
+    overflow-y: auto !important;
+    -webkit-overflow-scrolling: touch;
+  }
 }
 
 @media (min-width: 769px) {
@@ -69,5 +172,23 @@ code {
   }
   .desktop-only {
     display: flex;
+  }
+  
+  /* More subtle hover effects */
+  .hover-effect {
+    transition: all 0.2s ease;
+  }
+  .hover-effect:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 5px 15px rgba(0,0,0,0.1);
+  }
+}
+
+/* Handle iPhone notches and home indicator */
+@supports (padding: max(0px)) {
+  .notch-padding {
+    padding-left: max(12px, env(safe-area-inset-left));
+    padding-right: max(12px, env(safe-area-inset-right));
+    padding-bottom: max(12px, env(safe-area-inset-bottom));
   }
 } 

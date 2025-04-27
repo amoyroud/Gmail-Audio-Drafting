@@ -136,7 +136,7 @@ const saveTemplates = (templates: EmailTemplate[]): void => {
 const getDefaultTemplates = (): EmailTemplate[] => {
   return [
     {
-      id: uuidv4(),
+      id: 'default-decline-template-1',
       name: 'Polite Decline',
       subject: 'Re: {subject}',
       body: `Dear {sender},\n\nThank you for your email regarding {subject}.\n\nUnfortunately, I need to decline at this time due to prior commitments. I appreciate your understanding.\n\nBest regards,\n{name}`,
@@ -144,7 +144,7 @@ const getDefaultTemplates = (): EmailTemplate[] => {
       lastUsed: new Date().toISOString()
     },
     {
-      id: uuidv4(),
+      id: 'default-general-template-1',
       name: 'Schedule Meeting',
       subject: 'Re: {subject}',
       body: `Hi {sender},\n\nI'd like to schedule a meeting to discuss this further. Would you be available any of these times:\n\n- Monday between 10am-12pm\n- Tuesday between 2pm-4pm\n- Wednesday between 9am-11am\n\nPlease let me know which works best for you.\n\nBest,\n{name}`,

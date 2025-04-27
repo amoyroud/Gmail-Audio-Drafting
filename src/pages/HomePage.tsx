@@ -40,7 +40,7 @@ import RefreshIcon from '@mui/icons-material/Refresh';
 
 // Services
 import { archiveEmail, fetchEmails, getEmailById, getTotalEmailCount, moveToRead, signOut, type EmailsResponse } from '../services/gmailService';
-import { Email, EmailActionType, TodoTask } from '../types/types';
+import { Email, EmailActionType, TodoTask, EmailTemplate } from '../types/types';
 import AudioRecorder from '../components/AudioRecorder';
 import ActionSelector from '../components/ActionSelector';
 import TodoList from '../components/TodoList';
@@ -48,10 +48,10 @@ import GmailAuth from '../components/GmailAuth';
 import EmptyState from '../components/EmptyState';
 import { useEmail } from '../context/EmailContext';
 import { fixEncodingIssues } from '../utils/textFormatter';
-import Layout from '../components/Layout';
 import Header from '../components/Header';
 import EmailList from '../components/EmailList';
 import EmailContent from '../components/EmailContent';
+import { executeAction } from '../services/actionService';
 
 interface HomePageProps {}
 
@@ -258,6 +258,13 @@ const HomePage: React.FC<HomePageProps> = () => {
       const fullEmail = await getEmailById(email.id);
       if (fullEmail) {
         setSelectedEmail(fullEmail);
+        
+        // Navigate to email view page in mobile mode
+        if (isMobile) {
+          console.log('Navigating to email view page:', fullEmail.id);
+          navigate(`/email/${fullEmail.id}`);
+          return; // Stop execution after navigation
+        }
       } else {
         // If fetching fails, still set the selected email to what we have
         setSelectedEmail(email);
@@ -271,8 +278,11 @@ const HomePage: React.FC<HomePageProps> = () => {
     if (isMobile) {
       setPreviousEmailId(email.id);
       setSidebarVisible(false); // Hide sidebar when email is selected on mobile
+      
+      // Mobile navigation to email detail view
+      navigate(`/email/${email.id}`);
     }
-  }, [filteredEmails, isMobile, setPreviousEmailId, getEmailById]);
+  }, [filteredEmails, isMobile, setPreviousEmailId, getEmailById, navigate]);
 
   const handleArchive = async (emailId: string) => {
     setArchiving(emailId);
@@ -332,45 +342,103 @@ const HomePage: React.FC<HomePageProps> = () => {
     setTasks(prevTasks => prevTasks.filter(task => task.id !== taskId));
   };
 
-  const handleActionSelect = (action: EmailActionType) => {
-    setSelectedAction(action);
-    
-    // For certain actions (archive, move-to-read), execute immediately if an email is selected
-    if (selectedEmail && (action === 'archive' || action === 'move-to-read')) {
-      setIsActionInProgress(true);
-      handleEmailAction(action, selectedEmail)
-        .then(result => {
-          if (result && result.success) {
-            setActionSuccess(result.message);
-            setTimeout(() => setActionSuccess(null), 3000);
-          }
-        })
-        .finally(() => {
-          setIsActionInProgress(false);
-        });
+  // This function will now specifically handle opening the recorder modal
+  const handleOpenRecorder = (action: EmailActionType, email: Email) => {
+    console.log(`HomePage: Opening recorder for action: ${action} on email: ${email.id}`);
+    setSelectedAction(action); // Set the action type for the recorder
+    setSelectedEmail(email);    // Ensure the correct email is selected
+
+    if (isMobile) {
+      setIsRecorderOpen(true); // Use context for mobile bottom bar
+    } else {
+      setShowModal(true);      // Use local state for desktop modal
     }
   };
 
   const handleEmailAction = async (action: EmailActionType, email: Email) => {
-    // Always update the selected action - this allows switching between actions
-    setSelectedAction(action);
-    
-    // If Archive or To Read actions, execute them directly
-    if (selectedEmail) {
-      if (action === 'archive') {
-        await handleArchive(selectedEmail.id);
-        return { success: true, message: 'Email archived successfully' };
-      } else if (action === 'move-to-read') {
-        await handleMoveToRead(selectedEmail.id);
-        return { success: true, message: 'Email moved to To Read folder' };
-      } else if (action === 'speech-to-text' || action === 'ai-draft' || action === 'quick-decline') {
-        // Open modal for these actions
-        setShowModal(true);
-        return { success: true, message: 'Opening action modal' };
-      }
-      // Other actions (speech-to-text, quick-decline) will be handled by AudioRecorder
+    // This function should ONLY handle non-modal actions now
+    if (action !== 'archive' && action !== 'move-to-read') {
+      console.warn(`handleEmailAction called with unexpected action: ${action}. This should be handled elsewhere.`);
+      return;
     }
-    return { success: false, message: 'Action not handled' };
+
+    console.log(`Handling direct action: ${action} for email: ${email.id}`);
+    setIsActionInProgress(true);
+    setActionSuccess(null);
+    setError(null);
+    setPreviousEmailId(email.id);
+
+    try {
+      let result: { success: boolean; message?: string; data?: any };
+      switch (action) {
+        case 'archive':
+          const archiveResult = await archiveEmail(email.id);
+          result = { ...archiveResult, message: archiveResult.success ? 'Email archived' : 'Failed to archive' };
+          break;
+        case 'move-to-read':
+          const moveResult = await moveToRead(email.id);
+          result = { ...moveResult, message: moveResult.success ? 'Email moved to To Read' : 'Failed to move' };
+          break;
+        default:
+          // Should not happen based on the check above
+          result = { success: false, message: 'Unknown direct action' };
+      }
+
+      if (result.success) {
+        console.log('Direct action successful:', result.message);
+        setActionSuccess(result.message || 'Action successful!');
+        setEmails(prev => prev.filter(e => e.id !== email.id));
+        setSelectedEmail(null);
+      } else {
+        console.error('Direct action failed:', result.message);
+        setError(result.message || 'Action failed');
+      }
+    } catch (error) {
+      console.error('Error performing direct email action:', error);
+      setError('An error occurred during the action.');
+    } finally {
+      setIsActionInProgress(false);
+      setTimeout(() => {
+        setActionSuccess(null);
+        setError(null);
+      }, 3000);
+    }
+  };
+
+  const handleTemplateSelected = async (template: EmailTemplate, email: Email) => {
+    console.log('HomePage: Template selected:', template.name, 'for email:', email.id);
+    setIsActionInProgress(true);
+    setActionSuccess(null);
+    setError(null);
+    
+    try {
+      const result = await executeAction({
+        type: 'quick-decline',
+        email: email,
+        template: template
+      });
+
+      if (result.success) {
+        console.log('HomePage: Quick decline successful:', result.message);
+        setActionSuccess(result.message || 'Action successful!');
+        // Remove the email from the list after successful action
+        setEmails(prev => prev.filter(e => e.id !== email.id));
+        setSelectedEmail(null); // Deselect email
+      } else {
+        console.error('HomePage: Quick decline failed:', result.message);
+        setError(result.message || 'Quick decline action failed');
+      }
+    } catch (error) {
+      console.error('HomePage: Error during quick decline action:', error);
+      setError('An error occurred during the action.');
+    } finally {
+      setIsActionInProgress(false);
+      // Optionally reset success/error messages after a delay
+      setTimeout(() => {
+        setActionSuccess(null);
+        setError(null);
+      }, 3000);
+    }
   };
 
   const handleBackButtonClick = () => {
@@ -628,6 +696,63 @@ const HomePage: React.FC<HomePageProps> = () => {
     };
   }, [isDragging]);
 
+  // Mobile optimized functions for swipe interactions
+  const handleSwipe = useCallback(() => {
+    let touchStartX = 0;
+    let touchStartY = 0;
+    let touchEndX = 0;
+    let touchEndY = 0;
+
+    const handleTouchStart = (e: TouchEvent) => {
+      touchStartX = e.touches[0].clientX;
+      touchStartY = e.touches[0].clientY;
+    };
+
+    const handleTouchMove = (e: TouchEvent) => {
+      touchEndX = e.touches[0].clientX;
+      touchEndY = e.touches[0].clientY;
+    };
+
+    const handleTouchEnd = () => {
+      // Minimum distance for a swipe
+      const minDist = 75;
+      
+      // Calculate horizontal distance
+      const distX = touchEndX - touchStartX;
+      const distY = touchEndY - touchStartY;
+      
+      // Check if horizontal swipe
+      if (Math.abs(distX) > Math.abs(distY) && Math.abs(distX) > minDist) {
+        // Right swipe (open sidebar)
+        if (distX > 0 && !sidebarVisible && isMobile) {
+          setSidebarVisible(true);
+        }
+        // Left swipe (close sidebar)
+        else if (distX < 0 && sidebarVisible && isMobile) {
+          setSidebarVisible(false);
+        }
+      }
+    };
+
+    // Add event listeners
+    document.addEventListener('touchstart', handleTouchStart, { passive: true });
+    document.addEventListener('touchmove', handleTouchMove, { passive: true });
+    document.addEventListener('touchend', handleTouchEnd, { passive: true });
+
+    // Cleanup
+    return () => {
+      document.removeEventListener('touchstart', handleTouchStart);
+      document.removeEventListener('touchmove', handleTouchMove);
+      document.removeEventListener('touchend', handleTouchEnd);
+    };
+  }, [isMobile, sidebarVisible]);
+
+  // Set up swipe gesture handlers
+  useEffect(() => {
+    const cleanup = handleSwipe();
+    return cleanup;
+  }, [handleSwipe]);
+
   if (!isAuthenticated) {
     return (
       <Box sx={{ display: 'flex', flexDirection: 'column', height: '100vh', overflow: 'hidden', bgcolor: 'background.default' }}>
@@ -638,10 +763,245 @@ const HomePage: React.FC<HomePageProps> = () => {
     );
   }
 
-  return (
+  // Simplified view for mobile devices
+  if (isMobile) {
+    return (
+      <Box sx={{ height: '100%', display: 'flex', flexDirection: 'column' }}>
+        {/* Mobile Email List / Detail View */}
         <Box 
-          sx={{
-                          display: 'flex',
+          sx={{ 
+            flexGrow: 1, 
+            display: 'flex', 
+            overflow: 'hidden',
+            flexDirection: 'column'
+          }}
+        >
+          {/* Show either email list or email detail based on selection */}
+          {!selectedEmail ? (
+            <Box className="swipe-hint" sx={{ 
+              flexGrow: 1, 
+              overflow: 'auto',
+              WebkitOverflowScrolling: 'touch'
+            }}>
+              {/* Loading/Error State */}
+              {loading && !refreshingEmails && (
+                <Box sx={{ display: 'flex', justifyContent: 'center', p: 4 }}>
+                  <CircularProgress />
+                </Box>
+              )}
+              
+              {error && (
+                <Alert severity="error" sx={{ m: 2 }}>{error}</Alert>
+              )}
+              
+              {/* Email List Header */}
+              <Box sx={{ 
+                p: 1, 
+                display: 'flex', 
+                justifyContent: 'space-between',
+                alignItems: 'center',
+                position: 'sticky',
+                top: 0,
+                backgroundColor: 'background.paper',
+                zIndex: 10,
+                borderBottom: '1px solid',
+                borderColor: 'divider'
+              }}>
+                <Typography variant="h6" sx={{ fontWeight: 'bold' }}>
+                  Inbox
+                </Typography>
+                <IconButton onClick={handleRefreshEmails} disabled={refreshingEmails}>
+                  {refreshingEmails ? <CircularProgress size={24} /> : <RefreshIcon />}
+                </IconButton>
+              </Box>
+              
+              {/* Email List */}
+              <List sx={{ 
+                width: '100%', 
+                p: 0,
+                '& .MuiListItemButton-root': {
+                  px: 2
+                }
+              }}>
+                {filteredEmails.length === 0 && !loading ? (
+                  <EmptyState message="No emails found" icon="email" type="noEmails" />
+                ) : (
+                  filteredEmails.map((email, index) => (
+                    <ListItemButton
+                      key={email.id}
+                      onClick={() => handleEmailClick(email)}
+                      selected={selectedEmailIndex === index}
+                      sx={{
+                        borderBottom: '1px solid',
+                        borderColor: 'divider',
+                        py: 1.5,
+                        backgroundColor: isUnread(email) ? 'rgba(25, 118, 210, 0.04)' : 'transparent',
+                        position: 'relative',
+                        '&::after': isUnread(email) ? {
+                          content: '""',
+                          position: 'absolute',
+                          left: '0',
+                          top: '15px',
+                          bottom: '15px',
+                          width: '4px',
+                          backgroundColor: 'primary.main',
+                          borderRadius: '0 4px 4px 0'
+                        } : {}
+                      }}
+                    >
+                      <Box sx={{ display: 'flex', width: '100%' }}>
+                        <Avatar
+                          sx={{
+                            width: 40,
+                            height: 40,
+                            mr: 2,
+                            bgcolor: isUnread(email) ? 'primary.main' : 'grey.400',
+                          }}
+                        >
+                          {getAvatarInitial(email.from)}
+                        </Avatar>
+                        <Box sx={{ flexGrow: 1, minWidth: 0 }}>
+                          <Box sx={{ 
+                            display: 'flex', 
+                            justifyContent: 'space-between',
+                            alignItems: 'flex-start',
+                            mb: 0.5
+                          }}>
+                            <Typography 
+                              variant="subtitle1"
+                              sx={{ 
+                                fontWeight: isUnread(email) ? 600 : 400,
+                                whiteSpace: 'nowrap',
+                                overflow: 'hidden',
+                                textOverflow: 'ellipsis',
+                                maxWidth: '75%'
+                              }}
+                            >
+                              {email.from.name || email.from.email || 'Unknown Sender'}
+                            </Typography>
+                            <Typography 
+                              variant="caption" 
+                              color="text.secondary"
+                              sx={{ fontSize: '0.7rem', whiteSpace: 'nowrap' }}
+                            >
+                              {formatDate(email.date)}
+                            </Typography>
+                          </Box>
+                          <Typography 
+                            variant="body2"
+                            sx={{ 
+                              fontWeight: isUnread(email) ? 500 : 400,
+                              color: isUnread(email) ? 'text.primary' : 'text.secondary',
+                              whiteSpace: 'nowrap',
+                              overflow: 'hidden',
+                              textOverflow: 'ellipsis'
+                            }}
+                          >
+                            {email.subject || '(No subject)'}
+                          </Typography>
+                        </Box>
+                      </Box>
+                    </ListItemButton>
+                  ))
+                )}
+                {nextPageToken && (
+                  <Box sx={{ p: 2, textAlign: 'center' }}>
+                    <Button
+                      variant="outlined"
+                      onClick={() => fetchEmailsList(nextPageToken)}
+                      disabled={loading}
+                      size="small"
+                    >
+                      {loading ? <CircularProgress size={20} /> : 'Load More'}
+                    </Button>
+                  </Box>
+                )}
+              </List>
+            </Box>
+          ) : (
+            // Email Detail View
+            <Box 
+              sx={{ 
+                flexGrow: 1, 
+                display: 'flex', 
+                flexDirection: 'column',
+                overflow: 'hidden'
+              }}
+            >
+              {/* Email Detail Header */}
+              <Box sx={{ 
+                p: 1.5, 
+                display: 'flex', 
+                justifyContent: 'space-between',
+                alignItems: 'center',
+                borderBottom: '1px solid',
+                borderColor: 'divider',
+                backgroundColor: 'background.paper'
+              }}>
+                <IconButton 
+                  onClick={handleBackButtonClick}
+                  className="tap-target"
+                >
+                  <ArrowBackIcon />
+                </IconButton>
+              </Box>
+              
+              {/* Email Content */}
+              <Box 
+                sx={{ 
+                  flexGrow: 1, 
+                  overflow: 'auto',
+                  p: 2,
+                  WebkitOverflowScrolling: 'touch'
+                }}
+                className="scrollable-container"
+              >
+                <Typography variant="h6" sx={{ mb: 1 }}>
+                  {selectedEmail.subject || '(No subject)'}
+                </Typography>
+                
+                <Box sx={{ 
+                  display: 'flex', 
+                  mb: 2,
+                  alignItems: 'center'
+                }}>
+                  <Avatar
+                    sx={{
+                      width: 40,
+                      height: 40,
+                      mr: 2
+                    }}
+                  >
+                    {getAvatarInitial(selectedEmail.from)}
+                  </Avatar>
+                  
+                  <Box>
+                    <Typography variant="subtitle2">
+                      {selectedEmail.from.name || selectedEmail.from.email || 'Unknown'}
+                    </Typography>
+                    <Typography variant="caption" color="text.secondary">
+                      {formatDate(selectedEmail.date)}
+                    </Typography>
+                  </Box>
+                </Box>
+                
+                <Divider sx={{ mb: 2 }} />
+                
+                <Box sx={{ mb: 3 }}>
+                  {formatEmailBody(selectedEmail.body)}
+                </Box>
+              </Box>
+            </Box>
+          )}
+        </Box>
+      </Box>
+    );
+  }
+
+  return (
+    <Box 
+      sx={{
+        display: 'flex',
         flexDirection: 'column',
         minHeight: '100vh',
         maxWidth: '100vw',
@@ -752,9 +1112,9 @@ const HomePage: React.FC<HomePageProps> = () => {
                   </Button>
                 )}
               </Box>
-                        )}
-                      </Box>
-                    </Box>
+            )}
+          </Box>
+        </Box>
 
         {/* Draggable divider */}
         <Box
@@ -854,11 +1214,9 @@ const HomePage: React.FC<HomePageProps> = () => {
               <EmailContent
                 email={selectedEmail}
                 onAction={handleEmailAction}
-                goBack={() => {
-                  setSelectedEmail(null);
-                  setSidebarVisible(true);
-                  setShowEmailList(true);
-                }}
+                onTemplateSelected={handleTemplateSelected}
+                onOpenRecorder={handleOpenRecorder}
+                goBack={handleBackButtonClick}
               />
             </>
           ) : (
@@ -879,7 +1237,7 @@ const HomePage: React.FC<HomePageProps> = () => {
         </Box>
       </Box>
 
-      {/* Audio recording modal */}
+      {/* Audio recording modal (Desktop) */}
       <Modal
         open={showModal}
         onClose={handleCloseModal}

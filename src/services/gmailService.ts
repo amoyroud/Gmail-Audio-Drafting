@@ -922,16 +922,27 @@ const formatEmailAddress = (email: string, name?: string) => {
 // Send an email directly
 export const sendEmail = async (draft: DraftEmail): Promise<string> => {
   try {
+    console.log('sendEmail: Starting to send email with subject:', draft.subject);
+    
     // Validate draft fields
     if (!draft.to || !draft.subject || !draft.body) {
+      console.error('sendEmail: Missing required fields', { 
+        hasTo: !!draft.to, 
+        hasSubject: !!draft.subject, 
+        hasBody: !!draft.body 
+      });
       throw new Error('Missing required fields in draft email');
     }
 
+    console.log('sendEmail: Ensuring authenticated');
     await ensureAuthenticated();
 
+    console.log('sendEmail: Creating email content');
     const { raw: encodedEmail } = await createEmailContent(draft);
+    console.log('sendEmail: Email content created, length:', encodedEmail.length);
 
     // Send the email using Gmail API
+    console.log('sendEmail: Calling Gmail API');
     const response = await window.gapi.client.gmail.users.messages.send({
       userId: 'me',
       resource: {
@@ -939,10 +950,10 @@ export const sendEmail = async (draft: DraftEmail): Promise<string> => {
       }
     });
 
-    console.log('Email sent successfully:', response.result);
+    console.log('sendEmail: Email sent successfully:', response.result);
     return response.result.id;
   } catch (error: any) {
-    console.error('Error sending email:', {
+    console.error('sendEmail: Error sending email:', {
       error,
       errorMessage: error.message,
       errorDetails: error.result?.error?.message,

@@ -34,17 +34,24 @@ const TemplateSelector: React.FC<TemplateSelectorProps> = ({
   const [selectedId, setSelectedId] = useState<string>('');
   const [previewTemplate, setPreviewTemplate] = useState<EmailTemplate | null>(null);
 
-  // Load templates when the component mounts or templateType changes
+  // Reset and load templates whenever the dialog opens
   useEffect(() => {
-    const availableTemplates = getTemplatesByType(templateType);
-    setTemplates(availableTemplates);
-    
-    // Auto-select the first template if available
-    if (availableTemplates.length > 0 && !selectedId) {
-      setSelectedId(availableTemplates[0].id);
-      setPreviewTemplate(availableTemplates[0]);
+    if (isOpen) {
+      // Reset the selected ID when dialog opens
+      setSelectedId('');
+      setPreviewTemplate(null);
+      
+      // Get available templates
+      const availableTemplates = getTemplatesByType(templateType);
+      setTemplates(availableTemplates);
+      
+      // Auto-select the first template if available
+      if (availableTemplates.length > 0) {
+        setSelectedId(availableTemplates[0].id);
+        setPreviewTemplate(availableTemplates[0]);
+      }
     }
-  }, [templateType, isOpen]);
+  }, [isOpen, templateType]);
 
   // Update preview when selection changes
   useEffect(() => {
@@ -52,10 +59,14 @@ const TemplateSelector: React.FC<TemplateSelectorProps> = ({
       const selected = templates.find(t => t.id === selectedId);
       if (selected) {
         setPreviewTemplate(selected);
+      } else if (templates.length > 0) {
+        // If the selected ID is not found, default to the first template
+        setSelectedId(templates[0].id);
+        setPreviewTemplate(templates[0]);
       }
     }
   }, [selectedId, templates]);
-
+  
   const handleSelectTemplate = () => {
     if (previewTemplate) {
       onSelectTemplate(previewTemplate);
@@ -87,24 +98,25 @@ const TemplateSelector: React.FC<TemplateSelectorProps> = ({
             : '0 8px 32px rgba(0,0,0,0.1)'
         }
       }}
+      disableAutoFocus={false}
+      disableEnforceFocus={false}
+      disableRestoreFocus={true}
     >
-      <DialogTitle sx={{ pb: 1 }}>
-        <Typography variant="h6" component="h2">
-          Select Template
-        </Typography>
-        <Typography variant="subtitle2" color="text.secondary">
-          Choose a template to use for your email
-        </Typography>
-      </DialogTitle>
+      <DialogTitle sx={{ pb: 0 }}>Select Template</DialogTitle>
+      
+      <Typography variant="subtitle2" color="text.secondary" sx={{ pl: 3, pr: 3, pb: 1 }}>
+        Choose a template to use for your email
+      </Typography>
       
       <DialogContent sx={{ pt: 2 }}>
         <FormControl fullWidth variant="outlined" sx={{ mb: 3 }}>
           <InputLabel id="template-select-label">Template</InputLabel>
           <Select
             labelId="template-select-label"
-            value={selectedId}
+            value={templates.find(t => t.id === selectedId) ? selectedId : ''}
             onChange={(e) => setSelectedId(e.target.value as string)}
             label="Template"
+            autoFocus
           >
             {templates.map(template => (
               <MenuItem key={template.id} value={template.id}>

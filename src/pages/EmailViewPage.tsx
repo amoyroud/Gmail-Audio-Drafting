@@ -37,25 +37,70 @@ const EmailViewPage: React.FC = () => {
   const isMobile = useMediaQuery(theme.breakpoints.down('sm'));
 
   useEffect(() => {
-    setSelectedEmail(undefined); // Clear any previously selected email
+    // Don't clear the selected email until we have the new one
+    console.log('EmailViewPage - useEffect triggered with emailId:', emailId);
+    console.log('EmailViewPage - Component props:', { emailId });
+    
+    // Track if this component is still mounted
+    let isMounted = true;
     
     const fetchEmailDetails = async () => {
       if (!emailId) return;
       
+      console.log('EmailViewPage - Fetching email details for ID:', emailId);
       try {
         const emailData = await getEmailById(emailId);
+        
+        // Only update state if component is still mounted
+        if (!isMounted) return;
+        
+        console.log('EmailViewPage - Email data fetched successfully:', emailData.id, emailData.subject);
+        
+        // Set the email in local state
         setEmail(emailData);
-        setSelectedEmail(emailData); // Set the email in context
+        
+        // Set the email in global context for other components to access
+        console.log('EmailViewPage - About to set selectedEmail in context');
+        setSelectedEmail(emailData);
+        console.log('EmailViewPage - Selected email set in context:', emailData.id);
+        
+        // If we're on mobile, tell the Layout component about the current email ID
+        if (isMobile) {
+          // Add the email ID to sessionStorage for temporary fallback
+          sessionStorage.setItem('currentEmailId', emailData.id);
+          console.log('EmailViewPage - Saved email ID to sessionStorage:', emailData.id);
+        }
       } catch (err) {
+        if (!isMounted) return;
         console.error('Error fetching email details:', err);
         setError('Failed to load email details');
       } finally {
-        setLoading(false);
+        if (isMounted) {
+          setLoading(false);
+        }
       }
     };
     
     fetchEmailDetails();
-  }, [emailId, setSelectedEmail]);
+    
+    // Clean up function
+    return () => {
+      isMounted = false;
+      
+      // Fix: Only remove the currentEmailId from sessionStorage if we're *really* navigating away,
+      // not during re-renders or route changes to the same email
+      const currentPath = window.location.pathname;
+      
+      // Don't remove the email from sessionStorage during component unmounts that are part of
+      // the same email view (like when navigating between the same email routes or during re-renders)
+      if (isMobile && (!currentPath.includes('/email/') || (emailId && !currentPath.includes(emailId)))) {
+        console.log('EmailViewPage - Actually navigating away to another page, safe to remove from sessionStorage');
+        sessionStorage.removeItem('currentEmailId');
+      } else {
+        console.log('EmailViewPage - Not navigating away or rendering the same email, keeping sessionStorage intact');
+      }
+    };
+  }, [emailId, setSelectedEmail, isMobile]);
 
   const handleDraftChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     setDraftReply(e.target.value);
@@ -100,6 +145,7 @@ const EmailViewPage: React.FC = () => {
       height: 'calc(100vh - 120px)',
       overflow: 'hidden'
     }}>
+      <script type="application/json" id="current-email-id">{JSON.stringify({ emailId: email.id })}</script>
       <Paper sx={{ 
         p: { xs: 1.5, sm: 3 }, 
         mb: { xs: 3, md: 0 }, 

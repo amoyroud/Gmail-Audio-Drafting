@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import {
   Box,
   Typography,
@@ -25,6 +25,7 @@ import { Email, EmailActionType, EmailTemplate } from '../types/types';
 import ActionSelector from './ActionSelector';
 import TemplateSelector from './TemplateSelector';
 import { fixEncodingIssues } from '../utils/textFormatter';
+import { useEmail } from '../context/EmailContext';
 
 // Helper components for different email parts
 const EmailHeaderItem = ({ icon, label, value }: { icon: React.ReactNode, label: string, value: string }) => {
@@ -116,32 +117,65 @@ const ForwardedMessageHeader = ({ text }: { text: string }) => {
 interface EmailContentProps {
   email: Email;
   onAction: (action: EmailActionType, email: Email) => void;
+  onTemplateSelected?: (template: EmailTemplate, email: Email) => void;
+  onOpenRecorder?: (action: EmailActionType, email: Email) => void;
   goBack: () => void;
 }
 
-const EmailContent: React.FC<EmailContentProps> = ({ email, onAction, goBack }) => {
+const EmailContent: React.FC<EmailContentProps> = ({
+  email,
+  onAction,
+  onTemplateSelected,
+  onOpenRecorder,
+  goBack
+}) => {
   const theme = useTheme();
   const isMobile = useMediaQuery(theme.breakpoints.down('sm'));
   const [selectedAction, setSelectedAction] = useState<EmailActionType>('speech-to-text');
   const [expandedView, setExpandedView] = useState(false);
   const [isTemplateDialogOpen, setIsTemplateDialogOpen] = useState(false);
+  const { setSelectedEmail } = useEmail();
+  
+  // Update the EmailContext with the current email
+  useEffect(() => {
+    console.log('EmailContent - Setting selectedEmail in global context:', email.id);
+    setSelectedEmail(email);
+    
+    // Clean up the context when component unmounts
+    return () => {
+      console.log('EmailContent - Cleaning up selectedEmail from global context');
+      // Don't set to null here to prevent race conditions
+    };
+  }, [email, setSelectedEmail]);
 
-  const handleActionSelect = (action: EmailActionType) => {
+  const handleActionClick = (action: EmailActionType) => {
     setSelectedAction(action);
-  };
 
-  const handleActionExecute = (action: EmailActionType) => {
     if (action === 'quick-decline') {
-      setIsTemplateDialogOpen(true);
+      if (onTemplateSelected) {
+        setIsTemplateDialogOpen(true);
+      } else {
+        console.warn('No onTemplateSelected handler provided for quick-decline');
+      }
+    } else if (action === 'speech-to-text' || action === 'ai-draft') {
+      if (onOpenRecorder) {
+        onOpenRecorder(action, email);
+      } else {
+        console.warn('No onOpenRecorder handler provided');
+      }
     } else {
       onAction(action, email);
     }
   };
 
   const handleTemplateSelect = (template: EmailTemplate) => {
-    // Pass the selected template to the parent component
-    // For now, we're just closing the dialog and executing the action
-    onAction('quick-decline', email);
+    setIsTemplateDialogOpen(false);
+    if (onTemplateSelected) {
+      onTemplateSelected(template, email);
+    } else {
+      console.warn('No onTemplateSelected handler, falling back to default onAction');
+      onAction('quick-decline', email);
+    }
   };
 
   const toggleExpandedView = () => {
@@ -454,8 +488,7 @@ const EmailContent: React.FC<EmailContentProps> = ({ email, onAction, goBack }) 
                 color="primary"
                 startIcon={action.icon}
                 onClick={() => {
-                  setSelectedAction(action.key as EmailActionType);
-                  handleActionExecute(action.key as EmailActionType);
+                  handleActionClick(action.key as EmailActionType);
                 }}
                 sx={{
                   minWidth: 140,

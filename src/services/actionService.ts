@@ -1,5 +1,5 @@
 import { Email, EmailTemplate, EmailAction, ActionResult, DraftEmail, EmailActionType } from '../types/types';
-import { createDraft, sendEmail, archiveEmail, modifyLabels } from './gmailService';
+import { createDraft, modifyLabels, archiveEmail, sendEmail } from '../services/gmailService';
 import { generateDraftResponse } from './mistralService';
 
 // Response type for createDraft function
@@ -24,7 +24,8 @@ export const executeAction = async (action: EmailAction): Promise<ActionResult> 
     hasTranscription: !!action.transcription,
     transcriptionLength: action.transcription?.length || 0,
     hasEmail: !!action.email,
-    hasTemplate: !!action.template
+    hasTemplate: !!action.template,
+    templateName: action.template?.name
   });
   
   try {
@@ -145,28 +146,68 @@ const handleSpeechToText = async (action: EmailAction): Promise<ActionResult> =>
  * Handles quick decline using a template
  */
 const handleQuickDecline = async (action: EmailAction): Promise<ActionResult> => {
+  console.log('handleQuickDecline: Starting with template:', action.template?.name);
+  
   if (!action.template) {
+    console.log('handleQuickDecline: No template provided');
     return {
       success: false,
       message: 'No template provided for quick decline action'
     };
   }
 
-  const draftEmail: DraftEmail = {
-    to: action.email.from.email,
-    subject: `Re: ${action.email.subject}`,
-    body: action.template.body
-  };
-
   try {
-    const draftId = await createDraft(draftEmail);
+    // Format the email content using the template and recipient information
+    const formattedBody = action.template.body
+      .replace(/{sender}/g, action.email.from.name || action.email.from.email.split('@')[0])
+      .replace(/{subject}/g, action.email.subject)
+      .replace(/{name}/g, 'Me'); // TODO: Get user's name from profile
+
+    console.log('handleQuickDecline: Formatted email body:', formattedBody.substring(0, 100) + '...');
+
+    const draftEmail: DraftEmail = {
+      to: action.email.from.email,
+      subject: `Re: ${action.email.subject}`,
+      body: formattedBody
+    };
+
+    // Send the email directly instead of creating a draft
+    console.log('handleQuickDecline: Sending decline email response to:', draftEmail.to);
+    const emailId = await sendEmail(draftEmail);
+    
+    if (!emailId) {
+      console.error('handleQuickDecline: Failed to send email, no emailId returned');
+      return {
+        success: false,
+        message: 'Failed to send decline email',
+        data: null
+      };
+    }
+    
+    console.log('handleQuickDecline: Email sent successfully with ID:', emailId);
+    
+    // Now archive the original email
+    console.log('handleQuickDecline: Archiving original email:', action.email.id);
+    const archiveResult = await archiveEmail(action.email.id);
+    
+    if (!archiveResult.success) {
+      console.error('handleQuickDecline: Failed to archive email:', archiveResult);
+      return {
+        success: false,
+        message: 'Email sent but failed to archive original email',
+        data: { emailId }
+      };
+    }
+    
+    console.log('handleQuickDecline: Original email archived successfully');
     
     return {
       success: true,
-      message: 'Decline template draft created',
-      data: { draftId }
+      message: 'Decline email sent and original email archived',
+      data: { emailId }
     };
   } catch (error) {
+    console.error('handleQuickDecline: Error:', error);
     return {
       success: false,
       message: `Failed to create decline draft: ${error instanceof Error ? error.message : 'Unknown error'}`,

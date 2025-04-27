@@ -30,7 +30,33 @@ const getTheme = (mode: ThemeMode) => {
       // For MUI's typing, we need to cast our custom mode to PaletteMode when needed
       mode: mode === 'palette' ? 'light' as PaletteMode : mode,
     },
+    // Add custom breakpoints with more specific mobile breakpoints
+    breakpoints: {
+      values: {
+        xs: 0,
+        sm: 600,
+        md: 960,
+        lg: 1280,
+        xl: 1920,
+      },
+    },
   });
+  
+  // Define custom spacing for mobile and desktop
+  const baseSpacing = {
+    mobile: {
+      xs: 8,    // 8px
+      sm: 12,   // 12px
+      md: 16,   // 16px
+      lg: 24,   // 24px
+    },
+    desktop: {
+      xs: 12,   // 12px
+      sm: 16,   // 16px
+      md: 24,   // 24px
+      lg: 32,   // 32px
+    }
+  };
   
   let theme = createTheme(baseTheme, {
     palette: {
@@ -66,75 +92,115 @@ const getTheme = (mode: ThemeMode) => {
     },
     typography: {
       fontFamily: '"Inter", "Roboto", "Helvetica", "Arial", sans-serif',
+      // Responsive typography that scales better on mobile
       h1: {
         fontWeight: 800,
-        fontSize: '2.75rem', // 44px
+        fontSize: '2.25rem', // Slightly smaller on mobile
         lineHeight: 1.15,
         letterSpacing: '-0.02em',
+        '@media (min-width:600px)': {
+          fontSize: '2.75rem', // 44px on desktop
+        },
       },
       h2: {
         fontWeight: 700,
-        fontSize: '2.25rem', // 36px
+        fontSize: '2rem', // Adjusted for mobile
         lineHeight: 1.2,
         letterSpacing: '-0.01em',
+        '@media (min-width:600px)': {
+          fontSize: '2.25rem', // 36px on desktop
+        },
       },
       h3: {
         fontWeight: 700,
-        fontSize: '1.75rem', // 28px
+        fontSize: '1.5rem', // Adjusted for mobile
         lineHeight: 1.25,
+        '@media (min-width:600px)': {
+          fontSize: '1.75rem', // 28px on desktop
+        },
       },
       h4: {
         fontWeight: 600,
-        fontSize: '1.5rem', // 24px
+        fontSize: '1.3rem', // Adjusted for mobile
         lineHeight: 1.3,
+        '@media (min-width:600px)': {
+          fontSize: '1.5rem', // 24px on desktop
+        },
       },
       h5: {
         fontWeight: 600,
-        fontSize: '1.25rem', // 20px
+        fontSize: '1.1rem', // Adjusted for mobile
         lineHeight: 1.35,
+        '@media (min-width:600px)': {
+          fontSize: '1.25rem', // 20px on desktop
+        },
       },
       h6: {
         fontWeight: 600,
-        fontSize: '1.1rem', // 17.6px
+        fontSize: '1rem', // Adjusted for mobile
         lineHeight: 1.4,
+        '@media (min-width:600px)': {
+          fontSize: '1.1rem', // 17.6px on desktop
+        },
       },
       subtitle1: {
         fontWeight: 500,
-        fontSize: '1rem',
+        fontSize: '0.95rem', // Adjusted for mobile
         lineHeight: 1.5,
+        '@media (min-width:600px)': {
+          fontSize: '1rem', // Desktop size
+        },
       },
       subtitle2: {
         fontWeight: 500,
-        fontSize: '0.95rem',
+        fontSize: '0.9rem', // Adjusted for mobile
         lineHeight: 1.5,
+        '@media (min-width:600px)': {
+          fontSize: '0.95rem', // Desktop size
+        },
       },
       body1: {
         fontWeight: 400,
-        fontSize: '1rem',
+        fontSize: '0.95rem', // Adjusted for mobile
         lineHeight: 1.7,
+        '@media (min-width:600px)': {
+          fontSize: '1rem', // Desktop size
+        },
       },
       body2: {
         fontWeight: 400,
-        fontSize: '0.92rem',
+        fontSize: '0.875rem', // Adjusted for mobile
         lineHeight: 1.7,
+        '@media (min-width:600px)': {
+          fontSize: '0.92rem', // Desktop size
+        },
       },
       button: {
         fontWeight: 600,
-        fontSize: '1rem',
+        fontSize: '0.95rem', // Adjusted for mobile
         textTransform: 'none',
         letterSpacing: '0.01em',
+        '@media (min-width:600px)': {
+          fontSize: '1rem', // Desktop size
+        },
       },
       caption: {
         fontWeight: 400,
-        fontSize: '0.8rem',
+        fontSize: '0.75rem', // Adjusted for mobile
         lineHeight: 1.5,
         color: '#888',
+        '@media (min-width:600px)': {
+          fontSize: '0.8rem', // Desktop size
+        },
       },
       overline: {
         fontWeight: 500,
-        fontSize: '0.75rem',
+        fontSize: '0.7rem', // Adjusted for mobile
         letterSpacing: '0.08em',
         textTransform: 'uppercase',
+        '@media (min-width:600px)': {
+          fontSize: '0.75rem', // Desktop size
+        },
       },
     },
     shape: {
@@ -158,17 +224,21 @@ const getTheme = (mode: ThemeMode) => {
         },
       },
       
-      // Button styles
+      // Button styles with improved touch targets
       MuiButton: {
         styleOverrides: {
           root: {
             borderRadius: 8,
-            padding: '8px 20px',
+            padding: '10px 20px', // Increased for touch targets
             fontWeight: 600,
             fontSize: '1rem',
             textTransform: 'none',
             boxShadow: 'none',
             transition: 'background 0.2s, color 0.2s, box-shadow 0.2s',
+            minHeight: '48px', // Minimum touch target size
+            '@media (max-width:600px)': {
+              padding: '12px 20px', // Even more padding on mobile
+            },
             '&:hover': {
               boxShadow: mode === 'palette' ? '0 4px 12px rgba(49, 112, 57, 0.10)' : mode === 'light' ? '0 4px 12px rgba(33, 150, 243, 0.10)' : '0 4px 12px rgba(144, 202, 249, 0.10)',
             },
@@ -201,6 +271,24 @@ const getTheme = (mode: ThemeMode) => {
         },
       },
       
+      // Icon Button with larger touch targets for mobile
+      MuiIconButton: {
+        styleOverrides: {
+          root: {
+            padding: '12px', // Larger touch target
+            '@media (max-width:600px)': {
+              padding: '14px', // Even larger on mobile
+            },
+          },
+          sizeSmall: {
+            padding: '8px',
+            '@media (max-width:600px)': {
+              padding: '10px',
+            },
+          },
+        },
+      },
+      
       // Card styles
       MuiCard: {
         styleOverrides: {
@@ -213,34 +301,51 @@ const getTheme = (mode: ThemeMode) => {
         },
       },
       
-      // Form elements
+      // Form elements with improved touch targeting
       MuiTextField: {
         styleOverrides: {
           root: {
             '& .MuiOutlinedInput-root': {
               borderRadius: 8,
               transition: 'all 0.2s',
+              minHeight: '48px', // Minimum touch target height
               '&.Mui-focused': {
                 boxShadow: `0 0 0 2px ${mode === 'palette' ? 'rgba(49, 112, 57, 0.2)' : mode === 'light' ? 'rgba(33, 150, 243, 0.2)' : 'rgba(144, 202, 249, 0.2)'}`,
+              },
+              '& .MuiOutlinedInput-input': {
+                padding: '14px 16px', // Increased padding for touch
+                '@media (max-width:600px)': {
+                  padding: '16px 16px', // Even more padding on mobile
+                },
               },
             },
           },
         },
       },
       
-      // List items
+      // List items with improved touch targets
       MuiListItem: {
         styleOverrides: {
           root: {
             borderRadius: 8,
             transition: 'background-color 0.2s ease',
+            padding: '12px 16px', // Increased padding for touch
+            '@media (max-width:600px)': {
+              padding: '16px 16px', // Even more padding on mobile
+            },
           },
         },
       },
+      
       MuiListItemButton: {
         styleOverrides: {
           root: {
             borderRadius: 8,
+            padding: '12px 16px', // Increased padding for touch
+            '@media (max-width:600px)': {
+              padding: '16px 16px', // Even more padding on mobile
+            },
+            minHeight: '50px', // Ensure good touch target height
             '&.Mui-selected': {
               backgroundColor: mode === 'palette' ? 'rgba(49, 112, 57, 0.08)' : mode === 'light' ? 'rgba(33, 150, 243, 0.08)' : 'rgba(144, 202, 249, 0.08)',
               '&:hover': {
@@ -251,42 +356,86 @@ const getTheme = (mode: ThemeMode) => {
         },
       },
       
-      // Feedback components
-      MuiAlert: {
+      // Mobile optimized inputs for better UX
+      MuiInput: {
         styleOverrides: {
           root: {
-            borderRadius: 8,
-            padding: '8px 16px',
-          },
-          standardSuccess: {
-            backgroundColor: mode === 'palette' ? 'rgba(49, 112, 57, 0.1)' : mode === 'light' ? 'rgba(76, 175, 80, 0.1)' : 'rgba(76, 175, 80, 0.15)',
-            color: mode === 'palette' ? '#317039' : mode === 'light' ? '#2e7d32' : '#81c784',
-          },
-          standardError: {
-            backgroundColor: mode === 'palette' ? 'rgba(204, 75, 36, 0.1)' : mode === 'light' ? 'rgba(244, 67, 54, 0.1)' : 'rgba(244, 67, 54, 0.15)',
-            color: mode === 'palette' ? '#CC4B24' : mode === 'light' ? '#d32f2f' : '#e57373',
-          },
-          standardInfo: {
-            backgroundColor: mode === 'palette' ? 'rgba(241, 190, 73, 0.1)' : mode === 'light' ? 'rgba(33, 150, 243, 0.1)' : 'rgba(33, 150, 243, 0.15)',
-            color: mode === 'palette' ? '#F1BE49' : mode === 'light' ? '#0288d1' : '#64b5f6',
+            fontSize: '16px', // Prevents iOS zoom on focus
           },
         },
       },
       
-      // Dividers
-      MuiDivider: {
+      // Bottom navigation for mobile
+      MuiBottomNavigation: {
         styleOverrides: {
           root: {
-            borderColor: mode === 'palette' ? 'rgba(204, 75, 36, 0.2)' : mode === 'light' ? 'rgba(0, 0, 0, 0.08)' : 'rgba(255, 255, 255, 0.08)',
+            height: '64px', // Taller for easier touch
+            backgroundColor: mode === 'light' ? '#fff' : '#1E1E1E',
+            borderTop: `1px solid ${mode === 'light' ? 'rgba(0, 0, 0, 0.08)' : 'rgba(255, 255, 255, 0.08)'}`,
+          },
+        },
+      },
+      
+      MuiBottomNavigationAction: {
+        styleOverrides: {
+          root: {
+            padding: '8px 0',
+            minWidth: '64px',
+            '@media (max-width:360px)': {
+              minWidth: '56px', // Even smaller on very small screens
+              padding: '6px 0',
+            },
+            '&.Mui-selected': {
+              paddingTop: '8px',
+            },
+          },
+        },
+      },
+      
+      // Dialogs and modals optimized for mobile
+      MuiDialog: {
+        styleOverrides: {
+          paper: {
+            margin: '16px',
+            width: 'calc(100% - 32px)',
+            maxWidth: '600px',
+            '@media (max-width:600px)': {
+              margin: '16px',
+              borderRadius: '12px',
+            },
+          },
+        },
+      },
+      
+      // Touch-friendly chip components
+      MuiChip: {
+        styleOverrides: {
+          root: {
+            height: '32px',
+            '@media (max-width:600px)': {
+              height: '36px', // Taller on mobile for touch
+            },
+          },
+        },
+      },
+      
+      // Toolbar optimized for mobile headers
+      MuiToolbar: {
+        styleOverrides: {
+          root: {
+            '@media (max-width:600px)': {
+              paddingLeft: '12px',
+              paddingRight: '12px',
+            },
           },
         },
       },
     },
   });
 
-  // Make typography responsive
+  // Apply responsive font sizes after adding all the custom styles
   theme = responsiveFontSizes(theme);
-
+  
   return theme;
 };
 

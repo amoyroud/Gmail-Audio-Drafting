@@ -21,6 +21,11 @@ import SendIcon from '@mui/icons-material/Send';
 import ArchiveIcon from '@mui/icons-material/Archive';
 import AutoFixHighIcon from '@mui/icons-material/AutoFixHigh';
 import Stack from '@mui/material/Stack';
+import useMediaQuery from '@mui/material/useMediaQuery';
+import Fab from '@mui/material/Fab';
+import Slide from '@mui/material/Slide';
+import Zoom from '@mui/material/Zoom';
+import LinearProgress from '@mui/material/LinearProgress';
 
 // Services
 import { transcribeSpeech } from '../services/elevenlabsService';
@@ -94,6 +99,13 @@ const AudioRecorder: React.FC<AudioRecorderProps> = ({
   onRecordingStateChange
 }) => {
   const theme = useTheme();
+  const isMobile = useMediaQuery(theme.breakpoints.down('sm'));
+  
+  // Debug log the selectedEmail prop
+  useEffect(() => {
+    console.log('AudioRecorder - selectedEmail prop:', selectedEmail ? 
+      `${selectedEmail.id} (${selectedEmail.subject})` : 'null or undefined');
+  }, [selectedEmail]);
   
   // State to stabilize selectedEmail and prevent flickering
   const [stableEmail, setStableEmail] = useState<Email | null>(null);
@@ -141,6 +153,17 @@ const AudioRecorder: React.FC<AudioRecorderProps> = ({
   const [success, setSuccess] = useState<string | null>(null);
   const [editMode, setEditMode] = useState(false);
   
+  // Add recording time visualization
+  const [recordingTime, setRecordingTime] = useState(0);
+  const recordingTimerRef = useRef<NodeJS.Timeout | null>(null);
+  
+  // Add audio visualization
+  const [audioLevel, setAudioLevel] = useState(0);
+  const audioContextRef = useRef<AudioContext | null>(null);
+  const analyserRef = useRef<AnalyserNode | null>(null);
+  const dataArrayRef = useRef<Uint8Array | null>(null);
+  const animationFrameRef = useRef<number | null>(null);
+  
   // Action mode state
   const [selectedAction, setSelectedAction] = useState<EmailActionType>(initialAction || 'speech-to-text');
   const [isPerformingAction, setIsPerformingAction] = useState(false);
@@ -171,8 +194,14 @@ const AudioRecorder: React.FC<AudioRecorderProps> = ({
   useEffect(() => {
     if (selectedAction !== 'quick-decline') {
       setSelectedTemplateId('');
+    } else if (selectedAction === 'quick-decline' && settings.templates.length > 0) {
+      // Set the first available template ID when quick-decline is selected
+      const declineTemplates = settings.templates.filter(t => t.type === 'decline');
+      if (declineTemplates.length > 0) {
+        setSelectedTemplateId(declineTemplates[0].id);
+      }
     }
-  }, [selectedAction]);
+  }, [selectedAction, settings.templates]);
 
   // Add state for warm-up phase
   const [isWarmingUp, setIsWarmingUp] = useState(false);
@@ -189,6 +218,39 @@ const AudioRecorder: React.FC<AudioRecorderProps> = ({
     }
   }, [selectedAction, isRecording, processingAudio, audioBlob, transcription, draftReply]);
 
+  // Clean up audio visualization
+  useEffect(() => {
+    return () => {
+      if (animationFrameRef.current) {
+        cancelAnimationFrame(animationFrameRef.current);
+      }
+      if (recordingTimerRef.current) {
+        clearInterval(recordingTimerRef.current);
+      }
+    };
+  }, []);
+
+  // Audio visualization
+  const updateAudioLevel = () => {
+    if (!analyserRef.current || !dataArrayRef.current) return;
+    
+    analyserRef.current.getByteFrequencyData(dataArrayRef.current);
+    let sum = 0;
+    
+    // Calculate average audio level
+    for (let i = 0; i < dataArrayRef.current.length; i++) {
+      sum += dataArrayRef.current[i];
+    }
+    
+    const average = sum / dataArrayRef.current.length;
+    // Scale to 0-100 for easier use
+    const scaledLevel = Math.min(100, Math.max(0, average * 1.5));
+    setAudioLevel(scaledLevel);
+    
+    // Continue animation
+    animationFrameRef.current = requestAnimationFrame(updateAudioLevel);
+  };
+
   const startRecording = async () => {
     if (isRecording) return;
     
@@ -199,10 +261,49 @@ const AudioRecorder: React.FC<AudioRecorderProps> = ({
       // Request microphone access first
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
       
+      // Set up audio visualization
+      if (!audioContextRef.current) {
+        audioContextRef.current = new AudioContext();
+      }
+      
+      const audioContext = audioContextRef.current;
+      analyserRef.current = audioContext.createAnalyser();
+      analyserRef.current.fftSize = 256;
+      
+      const bufferLength = analyserRef.current.frequencyBinCount;
+      dataArrayRef.current = new Uint8Array(bufferLength);
+      
+      const source = audioContext.createMediaStreamSource(stream);
+      source.connect(analyserRef.current);
+      
+      // Start visualizing audio
+      animationFrameRef.current = requestAnimationFrame(updateAudioLevel);
+      
       // Create and configure media recorder with appropriate settings
+      let mimeType = 'audio/webm;codecs=opus';
+      
+      // For mobile, try to use more compatible formats
+      if (isMobile) {
+        // Try each mobile preferred MIME type until one works
+        for (const type of MOBILE_PREFERRED_MIME_TYPES) {
+          if (MediaRecorder.isTypeSupported(type)) {
+            mimeType = type;
+            break;
+          }
+        }
+      } else {
+        // For desktop, try to use the high-quality formats
+        for (const type of SUPPORTED_MIME_TYPES) {
+          if (MediaRecorder.isTypeSupported(type)) {
+            mimeType = type;
+            break;
+          }
+        }
+      }
+      
       const options = {
-        mimeType: 'audio/webm;codecs=opus',
-        audioBitsPerSecond: 128000 // 128 kbps for better quality but reasonable file size
+        mimeType,
+        audioBitsPerSecond: isMobile ? 96000 : 128000 // Lower bitrate for mobile to save bandwidth
       };
       
       try {
@@ -224,6 +325,16 @@ const AudioRecorder: React.FC<AudioRecorderProps> = ({
       
       mediaRecorderRef.current.onstop = async () => {
         console.log('Recording stopped.');
+        
+        // Stop the audio visualization
+        if (animationFrameRef.current) {
+          cancelAnimationFrame(animationFrameRef.current);
+        }
+        
+        // Stop the recording timer
+        if (recordingTimerRef.current) {
+          clearInterval(recordingTimerRef.current);
+        }
         
         // Only process if we have audio data
         if (audioChunksRef.current.length === 0) {
@@ -249,39 +360,34 @@ const AudioRecorder: React.FC<AudioRecorderProps> = ({
           }
           
           setAudioBlob(blob);
-          
-          // Process the audio
-          try {
-            const text = await transcribeSpeech(blob);
-            processTranscription(text);
-          } catch (error: any) {
-            console.error('Error processing audio:', error);
-            setError(`Error processing audio: ${error.message}`);
-            setProcessingAudio(false);
-          }
+          await processAudioToText(blob);
         } catch (blobError) {
           console.error('Error creating audio blob:', blobError);
-          setError('Failed to process recording. Please try again.');
+          setError('Failed to process audio. Please try again.');
           setProcessingAudio(false);
+        } finally {
+          // Reset audio visualization state
+          setAudioLevel(0);
+          setRecordingTime(0);
         }
       };
       
-      // Start recording with appropriate timeslice for better data handling
       mediaRecorderRef.current.start(1000); // Collect data in 1-second chunks
       setIsRecording(true);
-      console.log('Recording started successfully');
       
-      // Clean up stream when component unmounts
-      return () => {
-        stream.getTracks().forEach(track => track.stop());
-      };
-    } catch (error: any) {
-      console.error('Error starting recording:', error);
-      if (error.name === 'NotAllowedError' || error.name === 'PermissionDeniedError') {
-        setError('Microphone access denied. Please allow microphone access to use this feature.');
-      } else {
-        setError(`Failed to start recording: ${error.message}`);
+      // Update recording time every second
+      setRecordingTime(0);
+      recordingTimerRef.current = setInterval(() => {
+        setRecordingTime(prevTime => prevTime + 1);
+      }, 1000);
+      
+      // Inform parent about recording state
+      if (onRecordingStateChange) {
+        onRecordingStateChange(true);
       }
+    } catch (err) {
+      console.error('Error starting recording:', err);
+      setError('Could not access microphone. Please check your permissions and try again.');
     }
   };
 
@@ -401,14 +507,10 @@ const AudioRecorder: React.FC<AudioRecorderProps> = ({
   }, [isRecording, selectedAction, startRecording, stopRecording]);
   
   const processAudioToText = async (audioBlob: Blob) => {
+    setProcessingAudio(true);
     try {
-      setProcessingAudio(true);
-      setError(null);
-      
+      // Process the audio using the API
       const text = await transcribeSpeech(audioBlob);
-      setTranscription(text);
-      
-      // Process the transcription based on the selected action type
       processTranscription(text);
     } catch (error: any) {
       console.error('Error processing audio:', error);
@@ -640,7 +742,22 @@ const AudioRecorder: React.FC<AudioRecorderProps> = ({
   
   const handleTemplateSelect = (templateId: string) => {
     const template = settings.templates.find(t => t.id === templateId);
-    if (!template) return;
+    if (!template) {
+      console.error(`Template with ID ${templateId} not found`);
+      // If the template was not found, select the first available template
+      const declineTemplates = settings.templates.filter(t => t.type === 'decline');
+      if (declineTemplates.length > 0) {
+        setSelectedTemplateId(declineTemplates[0].id);
+        
+        // Apply signature to template content
+        const contentWithSignature = declineTemplates[0].content.replace('{signature}', settings.signature);
+        setDraftReply(contentWithSignature);
+      } else {
+        // Clear the invalid template ID
+        setSelectedTemplateId('');
+      }
+      return;
+    }
     
     // Apply signature to template content
     const contentWithSignature = template.content.replace('{signature}', settings.signature);
@@ -687,6 +804,119 @@ const AudioRecorder: React.FC<AudioRecorderProps> = ({
     }
   };
 
+  // Format recording time to MM:SS
+  const formatRecordingTime = (seconds: number): string => {
+    const minutes = Math.floor(seconds / 60);
+    const remainingSeconds = seconds % 60;
+    return `${minutes.toString().padStart(2, '0')}:${remainingSeconds.toString().padStart(2, '0')}`;
+  };
+
+  // Render recording button differently on mobile
+  const renderRecordingButton = () => {
+    if (isMobile) {
+      return (
+        <Box sx={{ 
+          display: 'flex', 
+          flexDirection: 'column',
+          alignItems: 'center', 
+          justifyContent: 'center',
+          mt: 2
+        }}>
+          {isRecording ? (
+            <Zoom in={true}>
+              <Fab 
+                color="secondary" 
+                aria-label="stop recording"
+                onClick={stopRecording}
+                sx={{
+                  width: 64,
+                  height: 64,
+                  mb: 1,
+                  animation: audioLevel > 5 ? `pulse ${(110 - audioLevel) / 50}s infinite` : 'none',
+                  '@keyframes pulse': {
+                    '0%': {
+                      transform: 'scale(1)',
+                      boxShadow: '0 0 0 0 rgba(255, 0, 0, 0.3)',
+                    },
+                    '70%': {
+                      transform: 'scale(1.1)',
+                      boxShadow: '0 0 0 10px rgba(255, 0, 0, 0)',
+                    },
+                    '100%': {
+                      transform: 'scale(1)',
+                      boxShadow: '0 0 0 0 rgba(255, 0, 0, 0)',
+                    },
+                  },
+                }}
+              >
+                <StopIcon />
+              </Fab>
+            </Zoom>
+          ) : (
+            <Zoom in={true}>
+              <Fab 
+                color="primary" 
+                aria-label="start recording"
+                onClick={startRecording}
+                sx={{
+                  width: 64,
+                  height: 64,
+                  mb: 1
+                }}
+              >
+                <MicIcon />
+              </Fab>
+            </Zoom>
+          )}
+          
+          {isRecording && (
+            <Box sx={{ textAlign: 'center', mt: 1, mb: 2 }}>
+              <Typography variant="subtitle2" color="primary" sx={{ fontWeight: 'bold' }}>
+                {formatRecordingTime(recordingTime)}
+              </Typography>
+              
+              <LinearProgress 
+                variant="determinate" 
+                value={Math.min(audioLevel, 100)} 
+                sx={{ 
+                  mt: 1, 
+                  height: 6, 
+                  borderRadius: 3,
+                  width: '200px',
+                  '& .MuiLinearProgress-bar': {
+                    transition: 'transform 0.1s ease-in-out',
+                  }
+                }} 
+              />
+            </Box>
+          )}
+        </Box>
+      );
+    }
+    
+    // Desktop version (original button)
+    return (
+      <Button
+        variant="contained"
+        color={isRecording ? "secondary" : "primary"}
+        size="large"
+        startIcon={isRecording ? <StopIcon /> : <MicIcon />}
+        onClick={isRecording ? stopRecording : startRecording}
+        disabled={processingAudio || generatingDraft}
+        sx={{
+          ...primaryButtonStyles,
+          my: 2,
+          backgroundColor: isRecording ? theme.palette.error.main : theme.palette.primary.main,
+          '&:hover': {
+            backgroundColor: isRecording ? theme.palette.error.dark : theme.palette.primary.dark,
+          },
+        }}
+      >
+        {isRecording ? 'Stop Recording' : 'Start Recording'}
+      </Button>
+    );
+  };
+
   return (
     <Box sx={{ width: '100%' }}>
       {/* Status Messages */}
@@ -716,10 +946,8 @@ const AudioRecorder: React.FC<AudioRecorderProps> = ({
         </Alert>
       )}
       
-      {/* Action Selector removed - now handled by parent component */}
-      
-      {/* Active Recording UI */}
-      {isRecording && (
+      {/* Active Recording UI - Show only on Desktop */}
+      {isRecording && !isMobile && (
         <Paper 
           elevation={0}
           sx={{ 
@@ -775,15 +1003,6 @@ const AudioRecorder: React.FC<AudioRecorderProps> = ({
             <Typography variant="h6" sx={{ mt: 2, color: 'error.main', fontWeight: 600, textAlign: 'center' }}>
               Recording...
             </Typography>
-            <Button
-              variant="outlined"
-              color="error"
-              onClick={stopRecording}
-              startIcon={<StopIcon />}
-              sx={{ mt: 2, borderRadius: '8px', whiteSpace: 'nowrap' }}
-            >
-              Stop Recording
-            </Button>
           </Box>
         </Paper>
       )}
@@ -894,27 +1113,60 @@ const AudioRecorder: React.FC<AudioRecorderProps> = ({
                   Choose a template to use for your email
                 </Typography>
                 
-                <FormControl fullWidth sx={{ mb: 2 }}>
-                  <InputLabel>Template</InputLabel>
-                  <Select
-                    value={selectedTemplateId}
-                    onChange={(e: SelectChangeEvent<string>) => {
-                      const templateId = e.target.value;
-                      if (templateId) {
-                        handleTemplateSelect(templateId);
-                      }
-                    }}
-                    label="Template"
-                  >
-                    {settings.templates
-                      .filter(template => template.type === 'decline')
-                      .map(template => (
-                        <MenuItem key={template.id} value={template.id}>
-                          {template.name}
-                        </MenuItem>
-                      ))}
-                  </Select>
-                </FormControl>
+                {settings.templates.filter(template => template.type === 'decline').length > 0 ? (
+                  <FormControl fullWidth sx={{ mb: 2 }}>
+                    <InputLabel>Template</InputLabel>
+                    <Select
+                      value={selectedTemplateId}
+                      onChange={(e: SelectChangeEvent<string>) => {
+                        const templateId = e.target.value;
+                        if (templateId) {
+                          handleTemplateSelect(templateId);
+                        }
+                      }}
+                      label="Template"
+                    >
+                      {settings.templates
+                        .filter(template => template.type === 'decline')
+                        .map(template => (
+                          <MenuItem key={template.id} value={template.id}>
+                            {template.name}
+                          </MenuItem>
+                        ))}
+                    </Select>
+                  </FormControl>
+                ) : (
+                  <Alert severity="warning" sx={{ mb: 2 }}>
+                    No decline templates available. Please add templates in the Settings page.
+                  </Alert>
+                )}
+                
+                {selectedTemplateId && draftReply && (
+                  <Box sx={{ mt: 2 }}>
+                    <Typography variant="subtitle2" gutterBottom>Preview:</Typography>
+                    <Box sx={{ 
+                      p: 2, 
+                      bgcolor: 'background.default', 
+                      borderRadius: 1, 
+                      whiteSpace: 'pre-wrap',
+                      fontSize: '0.9rem' 
+                    }}>
+                      {draftReply}
+                    </Box>
+                    
+                    <Box sx={{ display: 'flex', justifyContent: 'flex-end', mt: 2 }}>
+                      <Button 
+                        variant="contained" 
+                        color="primary"
+                        onClick={handleSendEmail}
+                        disabled={isPerformingAction}
+                        startIcon={<SendIcon />}
+                      >
+                        {isPerformingAction ? 'Sending...' : 'Send Email'}
+                      </Button>
+                    </Box>
+                  </Box>
+                )}
               </Box>
         </Paper>
       )}
@@ -1097,18 +1349,19 @@ const AudioRecorder: React.FC<AudioRecorderProps> = ({
           ) : (
             <Box 
               ref={(el: HTMLDivElement | null) => {
-                if (el) {
-                  console.log('Scrollable box dimensions:', {
-                    width: el.clientWidth,
-                    height: el.clientHeight,
-                    scrollHeight: el.scrollHeight,
-                    offsetHeight: el.offsetHeight,
-                    scrollTop: el.scrollTop,
-                    viewportHeight: window.innerHeight,
-                    offsetTop: el.offsetTop,
-                    bottomSpace: window.innerHeight - (el.offsetTop + el.offsetHeight)
-                  });
-                }
+                // Remove the console log causing spam
+                // if (el) {
+                //   console.log('Scrollable box dimensions:', {
+                //     width: el.clientWidth,
+                //     height: el.clientHeight,
+                //     scrollHeight: el.scrollHeight,
+                //     offsetHeight: el.offsetHeight,
+                //     scrollTop: el.scrollTop,
+                //     viewportHeight: window.innerHeight,
+                //     offsetTop: el.offsetTop,
+                //     bottomSpace: window.innerHeight - (el.offsetTop + el.offsetHeight)
+                //   });
+                // }
               }}
               sx={{ 
                 p: spacing.xs, 
@@ -1228,6 +1481,9 @@ const AudioRecorder: React.FC<AudioRecorderProps> = ({
           )}
         </Box>
       )}
+
+      {/* Recording Button - RENDER THIS OUTSIDE the specific state blocks, but hide when processing OR draft is shown */}
+      {!processingAudio && !(draftReply || transcription) && renderRecordingButton()}
     </Box>
   );
 };
