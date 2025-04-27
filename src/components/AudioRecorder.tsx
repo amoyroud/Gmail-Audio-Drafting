@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect, useCallback } from 'react';
 import { useTheme } from '@mui/material/styles';
 import Box from '@mui/material/Box';
 import Button from '@mui/material/Button';
@@ -13,6 +13,7 @@ import MenuItem from '@mui/material/MenuItem';
 import IconButton from '@mui/material/IconButton';
 import TextField from '@mui/material/TextField';
 import Tooltip from '@mui/material/Tooltip';
+import Snackbar from '@mui/material/Snackbar';
 import MicIcon from '@mui/icons-material/Mic';
 import StopIcon from '@mui/icons-material/Stop';
 import EditIcon from '@mui/icons-material/Edit';
@@ -20,19 +21,22 @@ import ContentCopyIcon from '@mui/icons-material/ContentCopy';
 import SendIcon from '@mui/icons-material/Send';
 import ArchiveIcon from '@mui/icons-material/Archive';
 import AutoFixHighIcon from '@mui/icons-material/AutoFixHigh';
-import Stack from '@mui/material/Stack';
+import InfoOutlinedIcon from '@mui/icons-material/InfoOutlined';
+import AlternateEmailIcon from '@mui/icons-material/AlternateEmail';
 import useMediaQuery from '@mui/material/useMediaQuery';
 import Fab from '@mui/material/Fab';
-import Slide from '@mui/material/Slide';
 import Zoom from '@mui/material/Zoom';
 import LinearProgress from '@mui/material/LinearProgress';
+import Autocomplete from '@mui/material/Autocomplete';
+import Chip from '@mui/material/Chip';
 
 // Services
 import { transcribeSpeech } from '../services/elevenlabsService';
-import { createDraft, sendEmail, archiveEmail } from '../services/gmailService';
+import { sendEmail, archiveEmail } from '../services/gmailService';
 import { executeAction } from '../services/actionService';
-import { Email, EmailActionType } from '../types/types';
+import { Email, EmailActionType, ActionResult, DraftEmail } from '../types/types';
 import { useSettings, EmailTemplate } from '../services/settingsService';
+import { searchContacts, Contact } from '../services/contactService';
 
 // Components
 import ActionSelector from './ActionSelector';
@@ -78,7 +82,7 @@ const commonButtonStyles = {
   borderRadius: '8px',
   px: 3,
   py: 1.5,
-  minWidth: { xs: '200px', sm: '240px' }
+  minWidth: { xs: '200px', sm: '200px' }
 };
 
 const primaryButtonStyles = {
@@ -152,6 +156,7 @@ const AudioRecorder: React.FC<AudioRecorderProps> = ({
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
   const [editMode, setEditMode] = useState(false);
+  const [isWarmingUp, setIsWarmingUp] = useState(false);
   
   // Add recording time visualization
   const [recordingTime, setRecordingTime] = useState(0);
@@ -173,6 +178,18 @@ const AudioRecorder: React.FC<AudioRecorderProps> = ({
   
   // Template selection state
   const [selectedTemplateId, setSelectedTemplateId] = useState<string>('');
+
+  // Snackbar state for EA notification
+  const [snackbarOpen, setSnackbarOpen] = useState(false);
+  const [snackbarMessage, setSnackbarMessage] = useState('');
+  const [snackbarSeverity, setSnackbarSeverity] = useState<'success' | 'error' | 'warning' | 'info'>('success');
+
+  // --- CC Autocomplete State ---
+  const [ccInputValue, setCcInputValue] = useState('');
+  const [ccRecipients, setCcRecipients] = useState<Contact[]>([]);
+  const [ccOptions, setCcOptions] = useState<Contact[]>([]);
+  const [ccLoading, setCcLoading] = useState(false);
+  // --- End CC Autocomplete State ---
 
   // Update local state when initialAction changes from parent
   useEffect(() => {
@@ -202,9 +219,6 @@ const AudioRecorder: React.FC<AudioRecorderProps> = ({
       }
     }
   }, [selectedAction, settings.templates]);
-
-  // Add state for warm-up phase
-  const [isWarmingUp, setIsWarmingUp] = useState(false);
 
   // When selectedAction changes to 'speech-to-text', start recording immediately if not already recording
   useEffect(() => {
@@ -506,11 +520,52 @@ const AudioRecorder: React.FC<AudioRecorderProps> = ({
     };
   }, [isRecording, selectedAction, startRecording, stopRecording]);
   
+  // Debounce function (simple implementation)
+  const debounce = (func: (...args: any[]) => void, wait: number) => {
+    let timeout: NodeJS.Timeout;
+    return (...args: any[]) => {
+      clearTimeout(timeout);
+      timeout = setTimeout(() => func.apply(this, args), wait);
+    };
+  };
+
+  // Debounced function to fetch contact options
+  const fetchContactsDebounced = useCallback(debounce(async (query: string) => {
+    if (query) {
+      setCcLoading(true);
+      const results = await searchContacts(query);
+      setCcOptions(results);
+      setCcLoading(false);
+    } else {
+      setCcOptions([]); // Clear options if query is empty
+    }
+  }, 300), []); // 300ms debounce
+
   const processAudioToText = async (audioBlob: Blob) => {
     setProcessingAudio(true);
     try {
       // Process the audio using the API
+      console.log('[AudioRecorder] processAudioToText: Transcribing...');
       const text = await transcribeSpeech(audioBlob);
+      console.log('[AudioRecorder] processAudioToText: Transcription received:', text);
+
+      // --- Update EA Detection Logic ---
+      const { eaName, eaEmail } = settings;
+      if (eaName && eaEmail && text && text.toLowerCase().includes(eaName.toLowerCase())) {
+        console.log(`[AudioRecorder] processAudioToText: EA Name "${eaName}" detected. Adding to CC recipients.`);
+        // Add EA to recipients state, avoid duplicates
+        setCcRecipients(prev => {
+          if (!prev.some(r => r.email.toLowerCase() === eaEmail.toLowerCase())) {
+            // Create a temporary Contact object for the EA
+            return [...prev, { resourceName: 'ea', name: eaName, email: eaEmail }];
+          } 
+          return prev;
+        });
+      } else {
+         console.log(`[AudioRecorder] processAudioToText: EA Name "${eaName || '(not set)'}" not detected or EA not configured.`);
+      }
+      // --- End EA Detection Update ---
+
       processTranscription(text);
     } catch (error: any) {
       console.error('Error processing audio:', error);
@@ -587,92 +642,109 @@ const AudioRecorder: React.FC<AudioRecorderProps> = ({
   };
   
   const performAction = async () => {
-    if (!stableEmail) return { success: false, message: 'No email selected' };
-    
-    setIsPerformingAction(true);
+    if (!stableEmail) {
+      setError('No email selected to perform action on.');
+      return;
+    }
+
+    // Reset previous states
     setError(null);
-    
+    setSuccess(null);
+    setIsPerformingAction(true);
+
+    let result: ActionResult | null = null;
+    let actionToPerform = selectedAction;
+
     try {
-      let result;
-      
-      switch (selectedAction) {
+      switch (actionToPerform) {
         case 'speech-to-text':
-          result = await executeAction({
-            type: 'speech-to-text',
-            email: stableEmail,
-            transcription: draftReply || transcription
-          });
-          break;
+        case 'ai-draft':
+          if (!transcription && !audioBlob) {
+            throw new Error('No recording or text available to create a draft.');
+          }
+          let textToUse = transcription;
+          if (!textToUse && audioBlob) {
+            console.log('performAction: Transcribing audio blob before creating draft...');
+            setProcessingAudio(true);
+            textToUse = await transcribeSpeech(audioBlob);
+            setTranscription(textToUse); // Update state
+            setProcessingAudio(false);
+            console.log('performAction: Transcription complete.');
+          }
           
-        case 'quick-decline':
-          if (selectedTemplateId) {
-            // Get the template
-            const template = settings.templates.find(t => t.id === selectedTemplateId);
-            if (template) {
-              // Apply signature to template content
-              const contentWithSignature = template.content.replace('{signature}', settings.signature);
-              
-              // Send with template
-              result = await executeAction({
-                type: 'quick-decline',
-                email: stableEmail,
-                template: {
-                  id: template.id,
-                  name: template.name,
-                  body: contentWithSignature,
-                  subject: `Re: ${stableEmail.subject}`,
-                  type: 'decline'
-                }
-              });
-            }
-          } else {
-            setError('No template selected');
-            setIsPerformingAction(false);
-            return { success: false, message: 'No template selected' };
+          // --- Use ccRecipients State for Draft --- 
+          const draftCcList = ccRecipients.map(r => r.email).filter(email => !!email);
+          console.log(`[AudioRecorder] performAction (draft): Using CC list:`, draftCcList);
+          // --- End Use ccRecipients ---
+          
+          setGeneratingDraft(true); 
+          console.log(`performAction: Calling executeAction for ${actionToPerform}...`);
+          result = await executeAction({
+            type: actionToPerform,
+            email: stableEmail,
+            transcription: textToUse,
+            enhance: actionToPerform === 'ai-draft',
+            // Add the cc list from state
+            cc: draftCcList 
+          });
+          if (result.success && result.data?.draft) {
+            setDraftReply(result.data.draft);
           }
           break;
-          
-        case 'move-to-read':
+
+        case 'quick-decline':
+          const selectedTemplate = settings.templates.find(t => t.id === selectedTemplateId);
+          if (!selectedTemplate) {
+            throw new Error('Selected template not found for quick decline.');
+          }
+          console.log('performAction: Calling executeAction for quick-decline...');
+          // Construct the template object expected by executeAction/EmailAction type
+          const templateForAction = {
+            id: selectedTemplate.id,
+            name: selectedTemplate.name,
+            body: selectedTemplate.content, // Map content to body
+            subject: `Re: ${stableEmail.subject}`, // Construct subject
+            type: selectedTemplate.type
+          };
           result = await executeAction({
-            type: 'move-to-read',
-            email: stableEmail
+            type: 'quick-decline',
+            email: stableEmail,
+            template: templateForAction // Pass the correctly shaped object
           });
           break;
-          
+
         case 'archive':
+          console.log('performAction: Calling executeAction for archive...');
           result = await executeAction({
             type: 'archive',
             email: stableEmail
           });
           break;
-          
+        
+        // Add cases for other actions like 'move-to-read' if needed
+
         default:
-          const errorMsg = `Unknown action type: ${selectedAction}`;
-          setError(errorMsg);
-          setIsPerformingAction(false);
-          return { success: false, message: errorMsg };
+          throw new Error(`Unsupported action type: ${actionToPerform}`);
       }
-      
-      // Set success message if operation succeeded
-      if (result && result.success) {
-        // Don't set success here, let the caller handle it
-        return {
-          success: true,
-          message: result.message || getSuccessMessage(selectedAction)
-        };
+
+      if (result?.success) {
+        setSuccess(result.message || getSuccessMessage(actionToPerform));
+        // Clear CC recipients on success
+        if (actionToPerform === 'speech-to-text' || actionToPerform === 'ai-draft' || actionToPerform === 'quick-decline') {
+            setCcRecipients([]);
+            setCcInputValue('');
+        }
+        if (onActionComplete) onActionComplete();
       } else {
-        const errorMsg = result?.message || 'Unknown error occurred';
-        setError(errorMsg);
-        return { success: false, message: errorMsg };
+        setError(result?.message || 'Action failed. Please try again.');
       }
-    } catch (error: any) {
-      const errorMsg = `Error performing action: ${error.message || 'Unknown error'}`;
-      console.error(errorMsg, error);
-      setError(errorMsg);
-      return { success: false, message: errorMsg };
+
+    } catch (err: any) {
+      console.error(`Error performing action ${actionToPerform}:`, err);
+      setError(err.message || `Failed to perform action: ${actionToPerform}.`);
     } finally {
       setIsPerformingAction(false);
-      setSavingDraft(false);
+      setGeneratingDraft(false);
       setProcessingAudio(false);
     }
   };
@@ -680,34 +752,26 @@ const AudioRecorder: React.FC<AudioRecorderProps> = ({
   const handleSaveDraft = async () => {
     if (!stableEmail || !draftReply) return;
     
-    try {
-      setSavingDraft(true);
-      setError(null);
-      
-      // Execute the appropriate action based on the selected action type
-      const result = await performAction();
-      
-      if (result && result.success) {
-        setSuccess(result.message || getSuccessMessage(selectedAction));
-        // Reset email draft after successful save
-        if (onDraftSaved) onDraftSaved();
-        if (onActionComplete) onActionComplete();
-        setTimeout(() => {
-          // Reset component state
-          setAudioBlob(null);
-          setTranscription('');
-          setDraftReply('');
-          setSuccess(null);
-        }, 2000);
-      } else if (result) {
-        setError(result.message || 'Failed to save draft');
-      }
-    } catch (error: any) {
-      console.error('Error saving draft:', error);
-      setError(`Error saving draft: ${error.message || 'Unknown error'}`);
-    } finally {
-      setSavingDraft(false);
-    }
+    // Call performAction to initiate the draft saving process.
+    // The function itself will update state (setSuccess, setError, etc.)
+    performAction(); 
+    
+    // Note: We might need additional logic here if we want to 
+    // specifically know if the *save draft* part succeeded *within* performAction, 
+    // but for now, we rely on performAction to handle its own success/error state updates.
+    // The onDraftSaved/onActionComplete calls should ideally happen *within* performAction 
+    // after the relevant async operation completes successfully.
+
+    // If performAction handles calling onDraftSaved and onActionComplete internally,
+    // this function might become simpler or primarily focus on setting the saving state.
+    // For now, let's assume performAction handles the necessary callbacks.
+
+    // Example: Setting saving state (if needed, though performAction might handle this too)
+    // setSavingDraft(true); // performAction likely sets setIsPerformingAction already
+    
+    // We could potentially add a check here after a short delay 
+    // to see if an error state was set by performAction, but 
+    // relying on performAction's internal state updates is cleaner.
   };
   
   const getSuccessMessage = (action: EmailActionType): string => {
@@ -768,30 +832,38 @@ const AudioRecorder: React.FC<AudioRecorderProps> = ({
   
   const handleSendEmail = async () => {
     if (!stableEmail || !draftReply) return;
-
+    
     try {
       setIsPerformingAction(true);
-      
-      // Create draft email object
-      const draft = {
+      setError(null); 
+      setSuccess(null); 
+    
+      // --- Use ccRecipients State for Send --- 
+      const sendCcList = ccRecipients.map(r => r.email).filter(email => !!email);
+      console.log(`[AudioRecorder] handleSendEmail: Using CC list:`, sendCcList);
+      // --- End Use ccRecipients ---
+          
+      const draft: DraftEmail = { 
         to: stableEmail.from.email,
         subject: `Re: ${stableEmail.subject}`,
-        body: draftReply
+        body: draftReply,
+        cc: sendCcList // Use the list derived from state
       };
       
-      // Send the email
+      console.log('[AudioRecorder] handleSendEmail: Sending email with CC:', draft.cc);
       const messageId = await sendEmail(draft);
       
       if (messageId) {
         setSuccess('Email sent successfully!');
-        // Notify parent component that action is complete
+        
         if (onActionComplete) onActionComplete();
-        // Clear the form after successful sending
         setTimeout(() => {
           setAudioBlob(null);
           setTranscription('');
           setDraftReply('');
           setSuccess(null);
+          setCcRecipients([]); // Clear CC recipients on successful send
+          setCcInputValue(''); // Clear input value too
         }, 2000);
       } else {
         setError('Failed to send email.');
@@ -915,6 +987,13 @@ const AudioRecorder: React.FC<AudioRecorderProps> = ({
         {isRecording ? 'Stop Recording' : 'Start Recording'}
       </Button>
     );
+  };
+
+  const handleSnackbarClose = (event?: React.SyntheticEvent | Event, reason?: string) => {
+    if (reason === 'clickaway') {
+      return;
+    }
+    setSnackbarOpen(false);
   };
 
   return (
@@ -1268,7 +1347,7 @@ const AudioRecorder: React.FC<AudioRecorderProps> = ({
       )}
 
       {/* Draft Reply Section */}
-      {((draftReply || transcription) && !isRecording && !processingAudio && stableEmail) && (
+      {stableEmail && !isRecording && !processingAudio && (
         <Box 
           sx={{ 
             mt: spacing.sm, 
@@ -1404,12 +1483,99 @@ const AudioRecorder: React.FC<AudioRecorderProps> = ({
             </Box>
           )}
 
-          {((draftReply || transcription) && !isRecording && !processingAudio && stableEmail) && (
+          {/* --- CC Autocomplete Input --- */}
+          <Autocomplete
+            multiple
+            freeSolo // Allow entering emails not in contacts
+            options={ccOptions} // Options fetched from API
+            value={ccRecipients} // Controlled state for selected recipients
+            onChange={(event, newValue) => {
+              // newValue can be an array of Contact objects or strings (from freeSolo)
+              const newRecipients = newValue.map(item => {
+                if (typeof item === 'string') {
+                  // Basic validation for freeSolo email entry
+                  if (/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(item)) { 
+                    return { resourceName: 'freeSolo', name: item, email: item };
+                  } else {
+                    // Optionally handle invalid email format here (e.g., show an error)
+                    console.warn('[AudioRecorder] Invalid email entered in CC:', item);
+                    return null; // Or handle differently
+                  }
+                } 
+                return item; // It's already a Contact object
+              }).filter(item => item !== null) as Contact[]; // Filter out invalid entries
+              setCcRecipients(newRecipients);
+            }}
+            inputValue={ccInputValue} // Controlled state for input text
+            onInputChange={(event, newInputValue) => {
+              setCcInputValue(newInputValue);
+              // Fetch contacts when input changes (debounced)
+              fetchContactsDebounced(newInputValue);
+            }}
+            getOptionLabel={(option) => {
+              // Handle both string (from freeSolo initial input) and Contact objects
+              if (typeof option === 'string') {
+                return option;
+              }
+              return `${option.name} <${option.email}>`;
+            }}
+            renderTags={(value: readonly Contact[], getTagProps) =>
+              value.map((option: Contact, index: number) => (
+                <Chip 
+                  variant="outlined" 
+                  label={`${option.name} <${option.email}>`}
+                  {...getTagProps({ index })} 
+                />
+              ))
+            }
+            renderInput={(params) => (
+              <TextField
+                {...params}
+                variant="outlined"
+                label="Cc"
+                placeholder="Add recipients (name or email)"
+                InputProps={{
+                  ...params.InputProps,
+                  endAdornment: (
+                    <React.Fragment>
+                      {ccLoading ? <CircularProgress color="inherit" size={20} /> : null}
+                      {params.InputProps.endAdornment}
+                    </React.Fragment>
+                  ),
+                }}
+                sx={{ mt: 2 }} // Margin top to space from text area
+              />
+            )}
+            // Render option to show name and email
+            renderOption={(props, option) => (
+              <li {...props} key={option.email}> 
+                {option.name} ({option.email})
+              </li>
+            )}
+            // Filter options based on input value (client-side filtering, API provides initial list)
+            filterOptions={(options, state) => {
+              let filtered = options;
+              // Optional: Add further client-side filtering if needed
+              // or rely solely on API results by returning options directly
+              return filtered;
+            }}
+            // Ensure options are unique based on email
+            isOptionEqualToValue={(option, value) => option.email === value.email}
+            loading={ccLoading}
+          />
+          {/* --- End CC Autocomplete Input --- */}
+
+          {/* Original EA Detected Indicator Logic (Remains commented out) */}
+          {/* {isEaDetected && settings.eaEmail && ( <Box> ... </Box> )} */}
+          {/* Keep this commented out or removed for now */} 
+
+          {/* Action Buttons Box */} 
+          {stableEmail && !isRecording && !processingAudio && (
             <Box 
               sx={{
                 display: 'flex',
                 flexDirection: { xs: 'column', sm: 'row' },
-                justifyContent: { xs: 'center', sm: 'flex-end' },
+                justifyContent: { xs: 'center', sm: 'center' },
                 alignItems: 'center',
                 mt: { xs: 4, sm: 2 },
                 mb: { xs: 2, sm: 1 },
@@ -1427,56 +1593,53 @@ const AudioRecorder: React.FC<AudioRecorderProps> = ({
                 },
               }}
             >
-              {/* Send Email button (always first) */}
-              <Button
-                variant="contained"
-                color="primary"
-                onClick={handleSendEmail}
-                disabled={!draftReply || processingAudio || isPerformingAction}
-                startIcon={<SendIcon />}
-                sx={{
-                  ...primaryButtonStyles,
-                  height: 48,
-                  borderRadius: '8px',
-                  minWidth: 180
-                }}
-              >
-                Send Email
-              </Button>
+              {/* Action Buttons - Keep original logic for rendering buttons inside */}
+              {(draftReply || transcription) && ( // Add this inner condition specifically for the buttons
+                <>
+                  {/* Enhance with AI Button */}
+                  {(selectedAction === 'speech-to-text' || selectedAction === 'ai-draft') && (
+                    <Button
+                      variant="outlined"
+                      color="secondary"
+                      onClick={() => generateReply(draftReply || transcription)} // Use existing text
+                      disabled={isPerformingAction || generatingDraft || !draftReply}
+                      startIcon={<AutoFixHighIcon />}
+                      sx={{ ...commonButtonStyles }}
+                    >
+                      {generatingDraft ? 'Enhancing...' : 'Enhance with AI'}
+                    </Button>
+                  )}
 
-              {/* Enhance with AI button (always visible if draftReply) */}
-              <Button
-                variant="contained"
-                color="primary"
-                onClick={() => generateReply(draftReply)}
-                startIcon={<AutoFixHighIcon />}
-                sx={{ borderRadius: '8px', fontSize: '0.95rem', height: 48, minWidth: 180 }}
-                disabled={!draftReply || generatingDraft}
-              >
-                Enhance with AI
-              </Button>
+                  {/* Save Draft Button */}
+                  {(selectedAction === 'speech-to-text' || selectedAction === 'quick-decline' || selectedAction === 'ai-draft') && (
+                     <Button
+                        variant="outlined"
+                        color="primary"
+                        onClick={handleSaveDraft}
+                        disabled={isPerformingAction || savingDraft || !draftReply}
+                        sx={{ ...commonButtonStyles }}
+                      >
+                        {getActionButtonText()} {/* Handles 'Save as Draft', 'Save Decline Draft' */}
+                      </Button>
+                  )}
 
-              {/* Save as Draft button (always last) */}
-              <Button
-                variant="contained"
-                color="primary"
-                startIcon={<ArchiveIcon />}
-                onClick={handleSaveDraft}
-                disabled={
-                  isPerformingAction || 
-                  savingDraft || 
-                  processingAudio ||
-                  !draftReply
-                }
-                sx={{ 
-                  ...primaryButtonStyles,
-                  height: 48,
-                  borderRadius: '8px',
-                  minWidth: 180
-                }}
-              >
-                Save as Draft
-              </Button>
+                  {/* Send Button */}
+                   {(selectedAction === 'speech-to-text' || selectedAction === 'quick-decline' || selectedAction === 'ai-draft') && (
+                     <Button
+                        variant="contained"
+                        color="primary"
+                        onClick={handleSendEmail}
+                        disabled={isPerformingAction || !draftReply}
+                        startIcon={<SendIcon />}
+                        sx={{ ...primaryButtonStyles }}
+                     >
+                        Send Email
+                     </Button>
+                  )}
+
+                  {/* Add other action-specific buttons here if needed later */}
+                </>
+              )}
             </Box>
           )}
         </Box>
@@ -1484,6 +1647,18 @@ const AudioRecorder: React.FC<AudioRecorderProps> = ({
 
       {/* Recording Button - RENDER THIS OUTSIDE the specific state blocks, but hide when processing OR draft is shown */}
       {!processingAudio && !(draftReply || transcription) && renderRecordingButton()}
+
+      {/* Snackbar for notifications */}
+      <Snackbar 
+        open={snackbarOpen} 
+        autoHideDuration={4000} // Hide after 4 seconds
+        onClose={handleSnackbarClose}
+        anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }} // Position at bottom center
+      >
+        <Alert onClose={handleSnackbarClose} severity={snackbarSeverity} sx={{ width: '100%' }}>
+          {snackbarMessage}
+        </Alert>
+      </Snackbar>
     </Box>
   );
 };

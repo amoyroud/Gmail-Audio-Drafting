@@ -36,10 +36,14 @@ const loadGisScript = async (): Promise<void> => {
 };
 
 // Gmail API configuration
-// Use the full Gmail scope for complete access
-const GMAIL_SCOPES = process.env.REACT_APP_GMAIL_API_SCOPE?.split(' ') || [
-  'https://mail.google.com/'
-];
+// Add contacts scope
+const REQUIRED_SCOPES = (
+  process.env.REACT_APP_GMAIL_API_SCOPE?.split(' ') || [
+    'https://mail.google.com/', // Full Gmail access
+  ]
+).concat([
+  'https://www.googleapis.com/auth/contacts.readonly' // Read contacts
+]);
 
 const CLIENT_ID = process.env.REACT_APP_GOOGLE_CLIENT_ID;
 const API_KEY = process.env.REACT_APP_GOOGLE_API_KEY;
@@ -127,7 +131,10 @@ export const initGmailClient = async (): Promise<void> => {
               console.log('initGmailClient: Initializing GAPI client with API key');
               await window.gapi.client.init({
                 apiKey: API_KEY,
-                discoveryDocs: ['https://www.googleapis.com/discovery/v1/apis/gmail/v1/rest']
+                discoveryDocs: [
+                  'https://www.googleapis.com/discovery/v1/apis/gmail/v1/rest',
+                  'https://people.googleapis.com/$discovery/rest?version=v1' // People API
+                ]
               });
               console.log('initGmailClient: GAPI client initialized successfully');
               resolveGapi();
@@ -166,10 +173,10 @@ export const initGmailClient = async (): Promise<void> => {
       }
 
       // Initialize the tokenClient
-      console.log('initGmailClient: Initializing token client with scopes:', GMAIL_SCOPES.join(' '));
+      console.log('initGmailClient: Initializing token client with scopes:', REQUIRED_SCOPES.join(' '));
       window.tokenClient = window.google.accounts.oauth2.initTokenClient({
         client_id: CLIENT_ID,
-        scope: GMAIL_SCOPES.join(' '),
+        scope: REQUIRED_SCOPES.join(' '),
         callback: async (tokenResponse: any) => {
           if (tokenResponse.error) {
             console.error('initGmailClient: Token error:', tokenResponse);
@@ -604,7 +611,7 @@ export const isSignedIn = async (): Promise<boolean> => {
 /**
  * Ensure authentication is valid and refresh if needed
  */
-const ensureAuthenticated = async (): Promise<void> => {
+export const ensureAuthenticated = async (): Promise<void> => {
   // Initialize client if needed
   if (!window.googleAuthInitialized) {
     await initGmailClient();
@@ -995,10 +1002,21 @@ const createEmailContent = async (draft: DraftEmail): Promise<{ raw: string, rec
     'Content-Transfer-Encoding: quoted-printable',
     `From: ${formatEmailAddress(fromEmail)}`,
     `To: ${formatEmailAddress(cleanEmail)}`,
-    `Subject: ${draft.subject}`,
-    '',
-    draft.body
   ];
+
+  // Add CC header if draft.cc exists and has entries
+  if (draft.cc && draft.cc.length > 0) {
+    const ccFormatted = draft.cc
+      .map(email => formatEmailAddress(email)) // Format each email
+      .join(', '); // Join with comma and space
+    emailLines.push(`Cc: ${ccFormatted}`);
+    console.log('createEmailContent: Added CC header:', ccFormatted);
+  }
+
+  // Add Subject and Body
+  emailLines.push(`Subject: ${draft.subject}`);
+  emailLines.push(''); // Blank line between headers and body
+  emailLines.push(draft.body);
 
   // Join with proper CRLF line endings
   const email = emailLines.join('\r\n');

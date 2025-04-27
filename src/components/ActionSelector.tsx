@@ -10,10 +10,10 @@ import {
 
 // Icons
 import MicIcon from '@mui/icons-material/Mic';
-import SmartToyIcon from '@mui/icons-material/SmartToy';
 import CancelScheduleSendIcon from '@mui/icons-material/CancelScheduleSend';
-import BookmarkIcon from '@mui/icons-material/Bookmark';
 import ArchiveIcon from '@mui/icons-material/Archive';
+import TaskAltIcon from '@mui/icons-material/TaskAlt';
+import AutoFixHighIcon from '@mui/icons-material/AutoFixHigh';
 
 import { EmailActionType } from '../types/types';
 
@@ -139,7 +139,7 @@ const ActionSelector: React.FC<ActionSelectorProps> = ({
             }}
           >
             <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
-              <BookmarkIcon sx={{ fontSize: { xs: 22, sm: 28 } }} />
+              <TaskAltIcon sx={{ fontSize: { xs: 22, sm: 28 } }} />
               <Typography variant="body2" sx={{ mt: { xs: 0.5, sm: 1 }, fontWeight: 500, fontSize: { xs: '0.7rem', sm: '0.875rem' } }}>To Read</Typography>
             </Box>
           </ToggleButton>

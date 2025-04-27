@@ -1,6 +1,7 @@
 import { Email, EmailTemplate, EmailAction, ActionResult, DraftEmail, EmailActionType } from '../types/types';
 import { createDraft, modifyLabels, archiveEmail, sendEmail } from '../services/gmailService';
 import { generateDraftResponse } from './mistralService';
+import { getSettings } from './settingsService';
 
 // Response type for createDraft function
 interface CreateDraftResponse {
@@ -83,7 +84,46 @@ const handleSpeechToText = async (action: EmailAction): Promise<ActionResult> =>
 
   try {
     let emailContent = action.transcription;
+    const transcriptLower = action.transcription.toLowerCase(); // Lowercase transcript once for efficiency
     console.log('handleSpeechToText: Transcription length:', emailContent.length);
+    
+    const { eaName, eaEmail, eaNameVariations } = getSettings();
+    let ccList: string[] = [];
+    let eaWasAdded = false;
+
+    console.log('handleSpeechToText: Checking for EA mention. Settings:', { eaName, eaEmail, hasVariations: !!eaNameVariations });
+
+    if (eaName && eaEmail && action.transcription) {
+      let foundMatch = false;
+      // Prioritize checking variations if they exist and are valid
+      if (Array.isArray(eaNameVariations) && eaNameVariations.length > 0) {
+          console.log(`handleSpeechToText: Checking ${eaNameVariations.length} EA name variations...`);
+          for (const variation of eaNameVariations) {
+              if (transcriptLower.includes(variation.name.toLowerCase())) {
+                  console.log(`handleSpeechToText: EA Variation "${variation.name}" detected in transcription.`);
+                  foundMatch = true;
+                  break; // Stop checking once a match is found
+              }
+          }
+      }
+      
+      // If no variations matched (or variations didn't exist), fall back to exact eaName check
+      if (!foundMatch && transcriptLower.includes(eaName.toLowerCase())) {
+          console.log(`handleSpeechToText: EA Name (exact) "${eaName}" detected in transcription.`);
+          foundMatch = true;
+      }
+
+      // If any match was found, add the EA email
+      if (foundMatch) {
+          console.log(`handleSpeechToText: Adding EA email "${eaEmail}" to CC list.`);
+          ccList.push(eaEmail);
+          eaWasAdded = true;
+      } else {
+          console.log(`handleSpeechToText: No EA name or variation detected for "${eaName}".`);
+      }
+    } else {
+      console.log(`handleSpeechToText: EA triggering skipped (missing eaName, eaEmail, or transcription).`);
+    }
     
     // If enhance flag is set, use the Mistral LLM to enhance the transcription
     if (action.enhance) {
@@ -92,7 +132,7 @@ const handleSpeechToText = async (action: EmailAction): Promise<ActionResult> =>
         console.log('handleSpeechToText: Calling generateDraftResponse...');
         // Generate AI draft using the transcription
         emailContent = await generateDraftResponse({
-          transcribedText: action.transcription,
+          transcribedText: action.transcription, // Use original transcription for context
           emailSubject: action.email.subject,
           emailBody: action.email.body,
           senderName: action.email.from.name
@@ -102,35 +142,44 @@ const handleSpeechToText = async (action: EmailAction): Promise<ActionResult> =>
       } catch (error) {
         console.error('handleSpeechToText: Error enhancing transcription with AI:', error);
         // Continue with the original transcription if enhancement fails
+        // Email content remains action.transcription in this case
       }
     } else {
       console.log('handleSpeechToText: No enhancement requested, using raw transcription');
     }
 
-    // Create a draft email with the transcription or AI-enhanced content
+    // Create a draft email object (using ccList determined above)
     const draftEmail: DraftEmail = {
       to: action.email.from.email,
       subject: `Re: ${action.email.subject}`,
-      body: emailContent
+      body: emailContent,
+      cc: ccList // Include the CC list (might be empty or contain eaEmail)
     };
 
     try {
       // Create a draft in Gmail
-      console.log('handleSpeechToText: Creating Gmail draft...');
+      console.log('handleSpeechToText: Creating Gmail draft with CC:', draftEmail.cc);
       const draftId = await createDraft(draftEmail);
       console.log('handleSpeechToText: Draft created successfully with ID:', draftId);
       
       return {
         success: true,
         message: action.enhance ? 'AI-enhanced draft created' : 'Speech draft created',
-        data: { draft: emailContent, draftId }
+        data: { 
+          draft: emailContent, 
+          draftId, 
+          eaAddedToCc: eaWasAdded // Pass the flag indicating if EA was added
+        }
       };
     } catch (error) {
       console.error('handleSpeechToText: Error creating draft:', error);
       return {
         success: false,
         message: `Failed to create draft: ${error instanceof Error ? error.message : 'Unknown error'}`,
-        data: { draft: emailContent }
+        data: { 
+          draft: emailContent, // Still return the processed content
+          eaAddedToCc: false // EA wasn't successfully added if draft creation failed
+        } 
       };
     }
   } catch (error) {

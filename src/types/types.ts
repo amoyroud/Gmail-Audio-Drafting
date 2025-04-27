@@ -17,6 +17,7 @@ export interface DraftEmail {
   to: string;
   subject: string;
   body: string;
+  cc?: string[];
 }
 
 export interface DraftGenerationParams {
@@ -58,6 +59,7 @@ export interface EmailAction {
   email: Email;
   transcription?: string;
   enhance?: boolean;
+  cc?: string[];
   template?: {
     id: string;
     name: string;

@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   Box,
@@ -25,7 +25,8 @@ import {
   Grid,
   Card,
   CardContent,
-  Stack
+  Stack,
+  CircularProgress
 } from '@mui/material';
 import HelpOutlineIcon from '@mui/icons-material/HelpOutline';
 import AddIcon from '@mui/icons-material/Add';
@@ -152,6 +153,10 @@ const SettingsPage: React.FC = () => {
   const theme = useTheme();
   const { settings, updateSettings } = useSettings();
   const [showSaved, setShowSaved] = useState(false);
+  const [eaNameLocal, setEaNameLocal] = useState(settings.eaName || '');
+  const [eaEmailLocal, setEaEmailLocal] = useState(settings.eaEmail || '');
+  const [isSavingEa, setIsSavingEa] = useState(false);
+  const [eaSaveError, setEaSaveError] = useState<string | null>(null);
   
   // Template management state
   const [templateDialogOpen, setTemplateDialogOpen] = useState(false);
@@ -159,37 +164,88 @@ const SettingsPage: React.FC = () => {
   const [templateForm, setTemplateForm] = useState<Partial<EmailTemplate>>({});
   const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
 
+  useEffect(() => {
+    setEaNameLocal(settings.eaName || '');
+    setEaEmailLocal(settings.eaEmail || '');
+  }, [settings.eaName, settings.eaEmail]);
+
   const handlePromptChange = (event: React.ChangeEvent<HTMLTextAreaElement>) => {
-    updateSettings({ emailPromptTemplate: event.target.value });
-    setShowSaved(true);
-    setTimeout(() => setShowSaved(false), 3000);
+    updateSettings({ emailPromptTemplate: event.target.value })
+      .then(() => {
+          setShowSaved(true);
+          setTimeout(() => setShowSaved(false), 3000);
+      })
+      .catch(error => {
+          console.error("Error saving prompt:", error);
+      });
   };
 
   const handleSignatureChange = (event: React.ChangeEvent<HTMLInputElement>) => {
-    updateSettings({ signature: event.target.value });
-    setShowSaved(true);
-    setTimeout(() => setShowSaved(false), 3000);
+    updateSettings({ signature: event.target.value })
+      .then(() => {
+        setShowSaved(true);
+        setTimeout(() => setShowSaved(false), 3000);
+      })
+      .catch(error => {
+        console.error("Error saving signature:", error);
+      });
   };
 
   const resetToDefault = () => {
     updateSettings({
       emailPromptTemplate: undefined,
       signature: undefined
-    });
-    setShowSaved(true);
-    setTimeout(() => setShowSaved(false), 3000);
+    })
+      .then(() => {
+        setShowSaved(true);
+        setTimeout(() => setShowSaved(false), 3000);
+      })
+      .catch(error => {
+        console.error("Error resetting prompt/signature:", error);
+      });
+  };
+
+  const debouncedSaveEaSettings = useCallback(
+    debounce(async (name: string, email: string) => {
+      console.log(`Debounced save triggered for EA: ${name}, ${email}`);
+      setIsSavingEa(true);
+      setEaSaveError(null);
+      try {
+        await updateSettings({ eaName: name, eaEmail: email });
+        setShowSaved(true);
+        setTimeout(() => setShowSaved(false), 3000);
+        console.log('EA settings saved successfully via debounced call');
+      } catch (error) {
+        console.error('Error saving EA settings:', error);
+        setEaSaveError(error instanceof Error ? error.message : 'An unknown error occurred');
+      } finally {
+        setIsSavingEa(false);
+      }
+    }, 1000),
+    [updateSettings]
+  );
+
+  const handleEaNameChange = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const newName = event.target.value;
+    setEaNameLocal(newName);
+    debouncedSaveEaSettings(newName, eaEmailLocal);
+  };
+
+  const handleEaEmailChange = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const newEmail = event.target.value;
+    setEaEmailLocal(newEmail);
+    debouncedSaveEaSettings(eaNameLocal, newEmail);
   };
 
   return (
     <Box sx={{ 
       maxWidth: 800, 
       mx: 'auto',
-      height: 'calc(100vh - 64px)', // Account for AppBar height
-      overflow: 'auto', // Enable scrolling
-      position: 'relative', // For absolute positioning of back button if needed
-      pt: 0 // No top padding to ensure back button is at the very top
+      minHeight: 'calc(100vh - 64px)',
+      overflow: 'auto',
+      position: 'relative',
+      pt: 0
     }}>
-      {/* Back Button - Fixed at top */}
       <Box sx={{ 
         display: 'flex', 
         alignItems: 'center',
@@ -198,287 +254,313 @@ const SettingsPage: React.FC = () => {
         zIndex: 10,
         bgcolor: theme.palette.background.default,
         py: 1.5,
-        px: { xs: 2, sm: 3 },
-        borderBottom: '1px solid',
-        borderColor: 'divider',
+        px: 2,
+        borderBottom: `1px solid ${theme.palette.divider}`,
         mb: 3
       }}>
-        <IconButton 
-          onClick={() => navigate('/home')} 
-          aria-label="back to home" 
-          sx={{ 
-            mr: 2,
-            backgroundColor: theme.palette.mode === 'dark' ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.04)',
-            '&:hover': {
-              backgroundColor: theme.palette.mode === 'dark' ? 'rgba(255,255,255,0.15)' : 'rgba(0,0,0,0.08)',
-            }
-          }}
-        >
+        <IconButton onClick={() => navigate(-1)} size="small" sx={{ mr: 1 }}>
           <ArrowBackIcon />
         </IconButton>
-        <Typography variant="h5" component="h1">
-          Settings
-        </Typography>
+        <Typography variant="h6">Settings</Typography>
+        {showSaved && (
+          <Alert severity="success" sx={{ ml: 'auto', py: 0, px: 1 }}>
+            Saved!
+          </Alert>
+        )}
       </Box>
 
-      {/* Theme Settings */}
-      <Paper sx={{ p: { xs: 2, sm: 3 }, mb: 3 }}>
-        <Box sx={{ mb: 3, display: 'flex', alignItems: 'center', gap: 1 }}>
-          <Typography variant="h5" component="h2">
-            Appearance Settings
-          </Typography>
-          <Tooltip title="Select your preferred theme appearance for the application">
-            <IconButton size="small">
-              <HelpOutlineIcon />
-            </IconButton>
-          </Tooltip>
-        </Box>
+      <Paper elevation={0} sx={{ p: 3, mt: 2 }}>
         <ThemeSelector />
-      </Paper>
-
-      {/* Email Settings */}
-      <Paper sx={{ p: { xs: 2, sm: 3 }, mb: 3 }}>
-        <Box sx={{ mb: 3, display: 'flex', alignItems: 'center', gap: 1 }}>
-          <Typography variant="h5" component="h1">
-            Email Response Settings
-          </Typography>
-          <Tooltip title="These settings customize how your email responses are generated. Available variables: {emailSubject}, {senderName}, {emailBody}, {transcribedText}, {signature}">
-            <IconButton size="small">
-              <HelpOutlineIcon />
-            </IconButton>
-          </Tooltip>
-        </Box>
-
-        <Box sx={{ mb: 4 }}>
-          <Typography variant="h6" gutterBottom>
-            Email Response Template
-          </Typography>
-          <TextField
-            fullWidth
-            multiline
-            rows={12}
-            variant="outlined"
-            value={settings.emailPromptTemplate}
-            onChange={handlePromptChange}
-            placeholder="Enter your custom email response template..."
-            sx={{
-              '& .MuiInputBase-root': {
-                fontFamily: 'monospace',
-                fontSize: '0.9rem'
-              }
-            }}
-          />
-        </Box>
-
-        <Box sx={{ mb: 4 }}>
-          <Typography variant="h6" gutterBottom>
-            Email Signature
-          </Typography>
-          <TextField
-            fullWidth
-            variant="outlined"
-            value={settings.signature}
-            onChange={handleSignatureChange}
-            placeholder="Enter your email signature..."
-          />
-        </Box>
-
-        <Box sx={{ display: 'flex', justifyContent: 'flex-end', gap: 2 }}>
-          <Button
-            variant="outlined"
-            onClick={resetToDefault}
-            color="secondary"
-          >
-            Reset to Default
-          </Button>
-        </Box>
-      </Paper>
-      
-      {/* Template Management */}
-      <Paper sx={{ p: { xs: 2, sm: 3 }, mb: 3 }}>
-        <Box sx={{ mb: 3, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-          <Typography variant="h5" component="h2">
-            Email Templates
-          </Typography>
-          <Button 
-            variant="contained" 
-            startIcon={<AddIcon />}
-            onClick={() => {
-              setEditingTemplate(null);
-              setTemplateForm({
-                id: `template-${Date.now()}`,
-                name: '',
-                content: '',
-                type: 'decline'
-              });
-              setTemplateDialogOpen(true);
-            }}
-          >
-            Add Template
-          </Button>
-        </Box>
+        <Divider sx={{ my: 3 }} />
         
-        <List>
-          {settings.templates.length === 0 ? (
-            <Typography variant="body2" color="text.secondary" sx={{ p: 2, textAlign: 'center' }}>
-              No templates found. Add your first template to get started.
-            </Typography>
-          ) : (
-            settings.templates.map((template, index) => (
-              <React.Fragment key={template.id}>
-                {index > 0 && <Divider />}
-                <ListItem 
-                  sx={{ 
-                    py: 2,
-                    '&:hover .template-actions': { opacity: 1 }
-                  }}
-                  secondaryAction={
-                    <Box className="template-actions" sx={{ opacity: { xs: 1, sm: 0 }, transition: 'opacity 0.2s' }}>
-                      <IconButton 
-                        edge="end" 
-                        aria-label="edit"
-                        onClick={() => {
-                          setEditingTemplate(template);
-                          setTemplateForm(template);
-                          setTemplateDialogOpen(true);
-                        }}
-                      >
-                        <EditIcon />
-                      </IconButton>
-                      <IconButton 
-                        edge="end" 
-                        aria-label="delete"
-                        onClick={() => {
-                          setEditingTemplate(template);
-                          setDeleteConfirmOpen(true);
-                        }}
-                      >
-                        <DeleteIcon />
-                      </IconButton>
-                    </Box>
-                  }
-                >
-                  <ListItemText
-                    primary={template.name}
-                    secondary={`Type: ${template.type}`}
-                  />
-                </ListItem>
-              </React.Fragment>
-            ))
+        <Box sx={{ mb: 3 }}>
+          <Typography variant="h6" gutterBottom>
+            Executive Assistant (EA) CC Automation
+          </Typography>
+          <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+            Automatically CC your EA when you mention their name in your audio recording.
+            Name variations will be generated automatically to improve detection.
+          </Typography>
+          
+          {eaSaveError && (
+            <Alert severity="error" sx={{ mb: 2 }}>
+              {eaSaveError}
+            </Alert>
           )}
-        </List>
-      </Paper>
-
-      {/* Template edit dialog */}
-      <Dialog 
-        open={templateDialogOpen} 
-        onClose={() => setTemplateDialogOpen(false)}
-        maxWidth="md"
-        fullWidth
-      >
-        <DialogTitle>{editingTemplate ? 'Edit Template' : 'Add Template'}</DialogTitle>
-        <DialogContent>
-          <Grid container spacing={2} sx={{ mt: 1 }}>
-            <Grid item xs={12} sm={6}>
+          
+          <Grid container spacing={2} alignItems="center"> 
+            <Grid item xs={12} sm={5}>
               <TextField
                 fullWidth
-                label="Template Name"
-                value={templateForm.name || ''}
-                onChange={(e) => setTemplateForm({...templateForm, name: e.target.value})}
+                label="EA Trigger Name/Phrase"
+                value={eaNameLocal}
+                onChange={handleEaNameChange}
+                variant="outlined"
+                InputProps={{
+                  endAdornment: isSavingEa ? <CircularProgress size={20} /> : null,
+                }}
+                helperText="The name you say to trigger the CC."
               />
             </Grid>
-            <Grid item xs={12} sm={6}>
-              <FormControl fullWidth>
-                <InputLabel>Template Type</InputLabel>
-                <Select
-                  value={templateForm.type || 'decline'}
-                  label="Template Type"
-                  onChange={(e) => setTemplateForm({...templateForm, type: e.target.value as 'decline' | 'general'})}
-                >
-                  <MenuItem value="decline">Decline</MenuItem>
-                  <MenuItem value="general">General</MenuItem>
-                </Select>
-              </FormControl>
-            </Grid>
-            <Grid item xs={12}>
+            <Grid item xs={12} sm={5}>
               <TextField
                 fullWidth
-                multiline
-                rows={8}
-                label="Template Content"
-                placeholder="Use {signature} to include your signature"
-                value={templateForm.content || ''}
-                onChange={(e) => setTemplateForm({...templateForm, content: e.target.value})}
-                sx={{ fontFamily: 'monospace' }}
+                label="EA Email Address"
+                value={eaEmailLocal}
+                onChange={handleEaEmailChange}
+                variant="outlined"
+                type="email"
+                helperText="The email address to add to CC."
               />
             </Grid>
           </Grid>
-        </DialogContent>
-        <DialogActions>
-          <Button onClick={() => setTemplateDialogOpen(false)}>Cancel</Button>
-          <Button 
-            variant="contained" 
-            onClick={() => {
-              const updatedTemplates = [...settings.templates];
-              
-              if (editingTemplate) {
-                // Update existing template
-                const index = updatedTemplates.findIndex(t => t.id === editingTemplate.id);
-                if (index !== -1) {
-                  updatedTemplates[index] = templateForm as EmailTemplate;
-                }
-              } else {
-                // Add new template
-                updatedTemplates.push(templateForm as EmailTemplate);
-              }
-              
-              updateSettings({ templates: updatedTemplates });
-              setTemplateDialogOpen(false);
-              setShowSaved(true);
-              setTimeout(() => setShowSaved(false), 3000);
-            }}
-            disabled={!templateForm.name || !templateForm.content}
-          >
-            Save
-          </Button>
-        </DialogActions>
-      </Dialog>
+        </Box>
 
-      {/* Delete confirmation dialog */}
-      <Dialog
-        open={deleteConfirmOpen}
-        onClose={() => setDeleteConfirmOpen(false)}
-      >
-        <DialogTitle>Delete Template</DialogTitle>
-        <DialogContent>
-          <Typography>Are you sure you want to delete the template "{editingTemplate?.name}"?</Typography>
-        </DialogContent>
-        <DialogActions>
-          <Button onClick={() => setDeleteConfirmOpen(false)}>Cancel</Button>
-          <Button
-            color="error"
-            onClick={() => {
-              if (editingTemplate) {
-                const updatedTemplates = settings.templates.filter(t => t.id !== editingTemplate.id);
+        <Divider sx={{ my: 3 }} />
+
+        <Paper sx={{ p: { xs: 2, sm: 3 }, mb: 3 }}>
+          <Box sx={{ mb: 3, display: 'flex', alignItems: 'center', gap: 1 }}>
+            <Typography variant="h5" component="h1">
+              Email Response Settings
+            </Typography>
+            <Tooltip title="These settings customize how your email responses are generated. Available variables: {emailSubject}, {senderName}, {emailBody}, {transcribedText}, {signature}">
+              <IconButton size="small">
+                <HelpOutlineIcon />
+              </IconButton>
+            </Tooltip>
+          </Box>
+
+          <Box sx={{ mb: 4 }}>
+            <Typography variant="h6" gutterBottom>
+              Email Response Template
+            </Typography>
+            <TextField
+              fullWidth
+              multiline
+              rows={12}
+              variant="outlined"
+              value={settings.emailPromptTemplate}
+              onChange={handlePromptChange}
+              placeholder="Enter your custom email response template..."
+              sx={{
+                '& .MuiInputBase-root': {
+                  fontFamily: 'monospace',
+                  fontSize: '0.9rem'
+                }
+              }}
+            />
+          </Box>
+
+          <Box sx={{ mb: 4 }}>
+            <Typography variant="h6" gutterBottom>
+              Email Signature
+            </Typography>
+            <TextField
+              fullWidth
+              variant="outlined"
+              value={settings.signature}
+              onChange={handleSignatureChange}
+              placeholder="Enter your email signature..."
+            />
+          </Box>
+
+          <Box sx={{ display: 'flex', justifyContent: 'flex-end', gap: 2 }}>
+            <Button
+              variant="outlined"
+              onClick={resetToDefault}
+              color="secondary"
+            >
+              Reset to Default
+            </Button>
+          </Box>
+        </Paper>
+        
+        <Paper sx={{ p: { xs: 2, sm: 3 }, mb: 3 }}>
+          <Box sx={{ mb: 3, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+            <Typography variant="h5" component="h2">
+              Email Templates
+            </Typography>
+            <Button 
+              variant="contained" 
+              startIcon={<AddIcon />}
+              onClick={() => {
+                setEditingTemplate(null);
+                setTemplateForm({
+                  id: `template-${Date.now()}`,
+                  name: '',
+                  content: '',
+                  type: 'decline'
+                });
+                setTemplateDialogOpen(true);
+              }}
+            >
+              Add Template
+            </Button>
+          </Box>
+          
+          <List>
+            {settings.templates.length === 0 ? (
+              <Typography variant="body2" color="text.secondary" sx={{ p: 2, textAlign: 'center' }}>
+                No templates found. Add your first template to get started.
+              </Typography>
+            ) : (
+              settings.templates.map((template, index) => (
+                <React.Fragment key={template.id}>
+                  {index > 0 && <Divider />}
+                  <ListItem 
+                    sx={{ 
+                      py: 2,
+                      '&:hover .template-actions': { opacity: 1 }
+                    }}
+                    secondaryAction={
+                      <Box className="template-actions" sx={{ opacity: { xs: 1, sm: 0 }, transition: 'opacity 0.2s' }}>
+                        <IconButton 
+                          edge="end" 
+                          aria-label="edit"
+                          onClick={() => {
+                            setEditingTemplate(template);
+                            setTemplateForm(template);
+                            setTemplateDialogOpen(true);
+                          }}
+                        >
+                          <EditIcon />
+                        </IconButton>
+                        <IconButton 
+                          edge="end" 
+                          aria-label="delete"
+                          onClick={() => {
+                            setEditingTemplate(template);
+                            setDeleteConfirmOpen(true);
+                          }}
+                        >
+                          <DeleteIcon />
+                        </IconButton>
+                      </Box>
+                    }
+                  >
+                    <ListItemText
+                      primary={template.name}
+                      secondary={`Type: ${template.type}`}
+                    />
+                  </ListItem>
+                </React.Fragment>
+              ))
+            )}
+          </List>
+        </Paper>
+
+        <Dialog 
+          open={templateDialogOpen} 
+          onClose={() => setTemplateDialogOpen(false)}
+          maxWidth="md"
+          fullWidth
+        >
+          <DialogTitle>{editingTemplate ? 'Edit Template' : 'Add Template'}</DialogTitle>
+          <DialogContent>
+            <Grid container spacing={2} sx={{ mt: 1 }}>
+              <Grid item xs={12} sm={6}>
+                <TextField
+                  fullWidth
+                  label="Template Name"
+                  value={templateForm.name || ''}
+                  onChange={(e) => setTemplateForm({...templateForm, name: e.target.value})}
+                />
+              </Grid>
+              <Grid item xs={12} sm={6}>
+                <FormControl fullWidth>
+                  <InputLabel>Template Type</InputLabel>
+                  <Select
+                    value={templateForm.type || 'decline'}
+                    label="Template Type"
+                    onChange={(e) => setTemplateForm({...templateForm, type: e.target.value as 'decline' | 'general'})}
+                  >
+                    <MenuItem value="decline">Decline</MenuItem>
+                    <MenuItem value="general">General</MenuItem>
+                  </Select>
+                </FormControl>
+              </Grid>
+              <Grid item xs={12}>
+                <TextField
+                  fullWidth
+                  multiline
+                  rows={8}
+                  label="Template Content"
+                  placeholder="Use {signature} to include your signature"
+                  value={templateForm.content || ''}
+                  onChange={(e) => setTemplateForm({...templateForm, content: e.target.value})}
+                  sx={{ fontFamily: 'monospace' }}
+                />
+              </Grid>
+            </Grid>
+          </DialogContent>
+          <DialogActions>
+            <Button onClick={() => setTemplateDialogOpen(false)}>Cancel</Button>
+            <Button 
+              variant="contained" 
+              onClick={() => {
+                const updatedTemplates = [...settings.templates];
+                
+                if (editingTemplate) {
+                  const index = updatedTemplates.findIndex(t => t.id === editingTemplate.id);
+                  if (index !== -1) {
+                    updatedTemplates[index] = templateForm as EmailTemplate;
+                  }
+                } else {
+                  updatedTemplates.push(templateForm as EmailTemplate);
+                }
+                
                 updateSettings({ templates: updatedTemplates });
-                setDeleteConfirmOpen(false);
+                setTemplateDialogOpen(false);
                 setShowSaved(true);
                 setTimeout(() => setShowSaved(false), 3000);
-              }
-            }}
-          >
-            Delete
-          </Button>
-        </DialogActions>
-      </Dialog>
+              }}
+              disabled={!templateForm.name || !templateForm.content}
+            >
+              Save
+            </Button>
+          </DialogActions>
+        </Dialog>
 
-      {showSaved && (
-        <Alert severity="success" sx={{ position: 'fixed', bottom: 24, right: 24, zIndex: theme.zIndex.snackbar }}>
-          Settings saved successfully
-        </Alert>
-      )}
+        <Dialog
+          open={deleteConfirmOpen}
+          onClose={() => setDeleteConfirmOpen(false)}
+        >
+          <DialogTitle>Delete Template</DialogTitle>
+          <DialogContent>
+            <Typography>Are you sure you want to delete the template "{editingTemplate?.name}"?</Typography>
+          </DialogContent>
+          <DialogActions>
+            <Button onClick={() => setDeleteConfirmOpen(false)}>Cancel</Button>
+            <Button
+              color="error"
+              onClick={() => {
+                if (editingTemplate) {
+                  const updatedTemplates = settings.templates.filter(t => t.id !== editingTemplate.id);
+                  updateSettings({ templates: updatedTemplates });
+                  setDeleteConfirmOpen(false);
+                  setShowSaved(true);
+                  setTimeout(() => setShowSaved(false), 3000);
+                }
+              }}
+            >
+              Delete
+            </Button>
+          </DialogActions>
+        </Dialog>
+      </Paper>
     </Box>
   );
 };
+
+function debounce<F extends (...args: any[]) => any>(func: F, waitFor: number) {
+  let timeoutId: ReturnType<typeof setTimeout> | null = null;
+
+  return (...args: Parameters<F>): void => {
+    if (timeoutId !== null) {
+      clearTimeout(timeoutId);
+    }
+    timeoutId = setTimeout(() => func(...args), waitFor);
+  };
+}
 
 export default SettingsPage;
