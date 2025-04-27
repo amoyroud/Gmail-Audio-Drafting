@@ -6,6 +6,8 @@ interface EmailContextType {
   setSelectedEmail: (email: Email | undefined) => void;
   isRecorderOpen: boolean;
   setIsRecorderOpen: (open: boolean) => void;
+  onActionComplete: (emailId: string) => void;
+  _setOnActionComplete: React.Dispatch<React.SetStateAction<(emailId: string) => void>>;
 }
 
 const EmailContext = createContext<EmailContextType | undefined>(undefined);
@@ -13,6 +15,11 @@ const EmailContext = createContext<EmailContextType | undefined>(undefined);
 export const EmailProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [selectedEmail, setSelectedEmail] = useState<Email | undefined>(undefined);
   const [isRecorderOpen, setIsRecorderOpen] = useState(false);
+  const [onActionCompleteHandler, setOnActionCompleteHandler] = useState<(emailId: string) => void>(() => 
+    (emailId: string) => {
+      console.warn('[EmailContext] Default onActionComplete called for email:', emailId, '. Handler might not be set yet.');
+    }
+  );
   
   // Create a wrapped version of setSelectedEmail with logging and deduplication
   const setSelectedEmailWithLogging = (email: Email | undefined) => {
@@ -36,7 +43,9 @@ export const EmailProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       selectedEmail, 
       setSelectedEmail: setSelectedEmailWithLogging, 
       isRecorderOpen, 
-      setIsRecorderOpen 
+      setIsRecorderOpen, 
+      onActionComplete: onActionCompleteHandler,
+      _setOnActionComplete: setOnActionCompleteHandler
     }}>
       {children}
     </EmailContext.Provider>
@@ -49,4 +58,12 @@ export const useEmail = () => {
     throw new Error('useEmail must be used within an EmailProvider');
   }
   return context;
+};
+
+export const useEmailActions = () => {
+  const context = useContext(EmailContext);
+  if (!context) {
+    throw new Error('useEmailActions must be used within an EmailProvider');
+  }
+  return { setOnCompleteHandler: context._setOnActionComplete };
 };

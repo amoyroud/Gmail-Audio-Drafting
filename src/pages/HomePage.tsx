@@ -52,6 +52,7 @@ import Header from '../components/Header';
 import EmailList from '../components/EmailList';
 import EmailContent from '../components/EmailContent';
 import { executeAction } from '../services/actionService';
+import { useEmailActions } from '../context/EmailContext';
 
 interface HomePageProps {}
 
@@ -88,6 +89,7 @@ const HomePage: React.FC<HomePageProps> = () => {
   const [showModal, setShowModal] = useState(false);
   const [sidebarWidthState, setSidebarWidthState] = useState(350);
   const [isDragging, setIsDragging] = useState(false);
+  const { setOnCompleteHandler } = useEmailActions();
   
   // Ref for sidebar width
   const startXRef = React.useRef(0);
@@ -499,14 +501,41 @@ const HomePage: React.FC<HomePageProps> = () => {
     setShowModal(false);
   };
 
-  const handleActionComplete = (emailId: string) => {
-    console.log(`[HomePage] Action complete for email ID: ${emailId}. Updating UI.`);
+  const handleActionComplete = useCallback((emailId: string) => {
+    console.log(`[HomePage] handleActionComplete: Started for email ID: ${emailId}.`);
+    
+    console.log(`[HomePage] handleActionComplete: Closing modal/recorder view...`);
     setShowModal(false);
+    setIsRecorderOpen(false);
+    console.log(`[HomePage] handleActionComplete: Modal/recorder view closed.`);
+    
+    console.log(`[HomePage] handleActionComplete: Filtering email list...`);
     setEmails(prevEmails => prevEmails.filter(email => email.id !== emailId));
+    console.log(`[HomePage] handleActionComplete: Email list filtered.`);
+    
     if (selectedEmail?.id === emailId) {
+      console.log(`[HomePage] handleActionComplete: Resetting selected email.`);
       setSelectedEmail(null);
     }
-  };
+    
+    console.log(`[HomePage] handleActionComplete: Navigating to /home...`);
+    navigate('/home');
+    console.log(`[HomePage] handleActionComplete: Finished.`);
+  }, [setIsRecorderOpen, navigate, selectedEmail?.id]);
+
+  // Set the action complete handler in the context when HomePage mounts
+  useEffect(() => {
+    console.log('[HomePage] Setting onActionComplete handler in context.');
+    if (setOnCompleteHandler) {
+      setOnCompleteHandler(() => handleActionComplete);
+    }
+    // Cleanup function to potentially reset the handler if HomePage unmounts
+    return () => {
+      // Removed the always-true check: if (setOnCompleteHandler)
+      // Reset to default or handle as needed (currently commented out)
+      // setOnCompleteHandler(() => (emailId: string) => console.warn('HomePage unmounted, handler reset.')); 
+    };
+  }, [setOnCompleteHandler, handleActionComplete]); // Need handleActionComplete in dependency array
 
   const handleRefreshEmails = async () => {
     setRefreshingEmails(true);
@@ -1269,7 +1298,6 @@ const HomePage: React.FC<HomePageProps> = () => {
               selectedEmail={selectedEmail}
               initialAction={selectedAction}
               onDraftSaved={handleCloseModal}
-              onActionComplete={handleActionComplete}
             />
           )}
         </Paper>

@@ -230,6 +230,17 @@ const AudioRecorder: React.FC<AudioRecorderProps> = ({
 
   // When selectedAction changes to 'speech-to-text', start recording immediately if not already recording
   useEffect(() => {
+    // Log conditions
+    console.log('[AudioRecorder] Auto-start useEffect Triggered. Conditions:', {
+      selectedAction,
+      isRecording,
+      processingAudio,
+      audioBlob: !!audioBlob,
+      transcription,
+      draftReply,
+      shouldRecord: selectedAction === 'speech-to-text' && !isRecording && !processingAudio && !audioBlob && !transcription && !draftReply
+    });
+
     // Only start recording automatically if:
     // 1. Action is speech-to-text
     // 2. Not currently recording
@@ -885,15 +896,20 @@ const AudioRecorder: React.FC<AudioRecorderProps> = ({
           setSuccess('Email sent successfully (could not archive original - missing ID).');
         }
 
-        if (onActionComplete && stableEmail?.id) onActionComplete(stableEmail.id);
-        setTimeout(() => {
-          setAudioBlob(null);
-          setTranscription('');
-          setDraftReply('');
-          setSuccess(null);
-          setCcRecipients([]); // Clear CC recipients on successful send
-          setCcInputValue(''); // Clear input value too
-        }, 2000);
+        console.log('[AudioRecorder] handleSendEmail: Before calling onActionComplete');
+        // Call parent handler immediately after action is done
+        if (onActionComplete && stableEmail?.id) onActionComplete(stableEmail.id); 
+        console.log('[AudioRecorder] handleSendEmail: After calling onActionComplete');
+
+        // Reset state immediately, removing the setTimeout
+        console.log('[AudioRecorder] handleSendEmail: Resetting internal state');
+        setAudioBlob(null);
+        setTranscription('');
+        setDraftReply('');
+        setSuccess(null); // Clear success message as we are navigating away
+        setCcRecipients([]); 
+        setCcInputValue('');
+
       } else {
         setError('Failed to send email.');
       }

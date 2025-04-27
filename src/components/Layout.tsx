@@ -23,7 +23,8 @@ import {
   List,
   ListItem,
   ListItemIcon,
-  ListItemText 
+  ListItemText,
+  CircularProgress
 } from '@mui/material';
 import MenuIcon from '@mui/icons-material/Menu';
 import SettingsIcon from '@mui/icons-material/Settings';
@@ -75,7 +76,7 @@ const Layout: React.FC<LayoutProps> = ({
   const theme = useTheme();
   const isMobile = useMediaQuery(theme.breakpoints.down('sm'));
   const [anchorEl, setAnchorEl] = React.useState<null | HTMLElement>(null);
-  const { selectedEmail, setSelectedEmail, isRecorderOpen, setIsRecorderOpen } = useEmail();
+  const { selectedEmail, setSelectedEmail, isRecorderOpen, setIsRecorderOpen, onActionComplete } = useEmail();
   const [mobileDrawerOpen, setMobileDrawerOpen] = useState(false);
   const [navValue, setNavValue] = useState(0);
   const [actionInProgress, setActionInProgress] = useState<string | null>(null);
@@ -657,18 +658,13 @@ const Layout: React.FC<LayoutProps> = ({
             scrollbarColor: 'rgba(0,0,0,0.2) rgba(0,0,0,0.05)',
           }}>
             {loadingEmailForModal ? (
-              <Box sx={{ p: 3, textAlign: 'center' }}>
-                <Typography variant="body1" gutterBottom>
-                  Loading email...
-                </Typography>
+              <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100%' }}>
+                <CircularProgress />
               </Box>
             ) : (selectedEmail || emailForModal) ? (
               <AudioRecorder
                 selectedEmail={selectedEmail || emailForModal!}
-                onDraftSaved={() => {
-                  setIsRecorderOpen(false);
-                  setEmailForModal(null);
-                }}
+                onActionComplete={onActionComplete}
               />
             ) : (
               <Box sx={{ p: 1.5, textAlign: 'center' }}>
