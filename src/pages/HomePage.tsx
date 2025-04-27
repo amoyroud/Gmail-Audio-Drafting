@@ -86,6 +86,12 @@ const HomePage: React.FC<HomePageProps> = () => {
   const [showEmailList, setShowEmailList] = useState(true);
   const [refreshingEmails, setRefreshingEmails] = useState(false);
   const [showModal, setShowModal] = useState(false);
+  const [sidebarWidthState, setSidebarWidthState] = useState(350);
+  const [isDragging, setIsDragging] = useState(false);
+  
+  // Ref for sidebar width
+  const startXRef = React.useRef(0);
+  const startWidthRef = React.useRef(0);
 
   const fetchEmailsList = useCallback(async (pageToken?: string) => {
     if (!isAuthenticated) return;
@@ -237,13 +243,36 @@ const HomePage: React.FC<HomePageProps> = () => {
     }
   }, [selectedEmail]);
 
-  const handleEmailClick = (email: Email) => {
-    setSelectedEmail(email);
+  // Use useCallback to prevent recreating this function on every render
+  const handleEmailClick = useCallback(async (email: Email) => {
+    console.log('Email clicked, loading full details:', email.id);
+    
+    // Find the index of the clicked email and update selectedEmailIndex
+    const index = filteredEmails.findIndex(e => e.id === email.id);
+    if (index !== -1) {
+      setSelectedEmailIndex(index);
+    }
+    
+    try {
+      // Fetch the full email details
+      const fullEmail = await getEmailById(email.id);
+      if (fullEmail) {
+        setSelectedEmail(fullEmail);
+      } else {
+        // If fetching fails, still set the selected email to what we have
+        setSelectedEmail(email);
+      }
+    } catch (error) {
+      console.error('Error fetching full email details:', error);
+      // If fetching fails, still set the selected email to what we have
+      setSelectedEmail(email);
+    }
+    
     if (isMobile) {
       setPreviousEmailId(email.id);
       setSidebarVisible(false); // Hide sidebar when email is selected on mobile
     }
-  }
+  }, [filteredEmails, isMobile, setPreviousEmailId, getEmailById]);
 
   const handleArchive = async (emailId: string) => {
     setArchiving(emailId);
@@ -345,25 +374,58 @@ const HomePage: React.FC<HomePageProps> = () => {
   };
 
   const handleBackButtonClick = () => {
+    console.log('Back button clicked, clearing selected email');
     setSelectedEmail(null);
     // Also stop any active recording if user is navigating back
     if (isRecording) {
       setIsRecording(false);
       setRecordingAction(null);
     }
+    // Show email list when going back
+    setShowEmailList(true);
     // Show sidebar when going back
-    if (isMobile) {
-      setSidebarVisible(true);
-    }
+    setSidebarVisible(true);
   };
 
-  const handleSelectEmail = (email: Email) => {
-    setSelectedEmail(email);
+  const handleSelectEmail = useCallback(async (email: Email) => {
+    console.log('Email selected via click:', email.id);
+    
+    // Find the index of the clicked email and update selectedEmailIndex
+    const index = filteredEmails.findIndex(e => e.id === email.id);
+    if (index !== -1) {
+      setSelectedEmailIndex(index);
+    }
+    
+    // Set loading state while fetching full email details
+    setLoading(true);
+    
+    try {
+      // Fetch the full email details to ensure we have the complete body
+      const fullEmail = await getEmailById(email.id);
+      if (fullEmail) {
+        // Update both the selectedEmail and the email in the list
+        setSelectedEmail(fullEmail);
+        setEmails(prevEmails => 
+          prevEmails.map(e => e.id === fullEmail.id ? fullEmail : e)
+        );
+      } else {
+        // If fetching fails, still set the selected email to what we have
+        setSelectedEmail(email);
+      }
+    } catch (error) {
+      console.error('Error fetching full email details:', error);
+      // If fetching fails, still set the selected email to what we have
+      setSelectedEmail(email);
+      setError('Could not load complete email details');
+    } finally {
+      setLoading(false);
+    }
+    
     if (isMobile) {
       setPreviousEmailId(email.id);
       setSidebarVisible(false); // Hide sidebar when email is selected on mobile
     }
-  };
+  }, [filteredEmails, isMobile, setPreviousEmailId, getEmailById]);
 
   const handleCloseModal = () => {
     setShowModal(false);
@@ -389,29 +451,99 @@ const HomePage: React.FC<HomePageProps> = () => {
     const handleKeyDown = async (event: KeyboardEvent) => {
       if (!filteredEmails || filteredEmails.length === 0) return;
 
+      // If in email view (selectedEmail is set and being viewed)
+      if (selectedEmail) {
+        switch (event.key) {
+          case 'ArrowLeft':
+            // Return to email list
+            setSelectedEmail(null);
+            break;
+          case 'ArrowRight':
+          case 'Enter':
+          case ' ':
+            // Open action modal with first action mode
+            setSelectedAction('speech-to-text');
+            setShowModal(true);
+            event.preventDefault();
+            break;
+          // Add navigation within email view mode
+          case 'ArrowUp':
+            // Navigation within email view - go to previous email
+            event.preventDefault();
+            const prevIndex = Math.max(0, selectedEmailIndex - 1);
+            if (prevIndex !== selectedEmailIndex) {
+              setSelectedEmailIndex(prevIndex);
+              setSelectedEmail(filteredEmails[prevIndex]);
+            }
+            break;
+          case 'ArrowDown':
+            // Navigation within email view - go to next email
+            event.preventDefault();
+            const nextIndex = Math.min(filteredEmails.length - 1, selectedEmailIndex + 1);
+            if (nextIndex !== selectedEmailIndex) {
+              setSelectedEmailIndex(nextIndex);
+              setSelectedEmail(filteredEmails[nextIndex]);
+            }
+            break;
+        }
+        return;
+      }
+
+      // If in email list view (no specific email is being viewed)
       switch (event.key) {
         case 'ArrowUp':
+          event.preventDefault(); // Prevent default scrolling
           const newUpIndex = Math.max(0, selectedEmailIndex - 1);
           setSelectedEmailIndex(newUpIndex);
-          const upEmail = filteredEmails[newUpIndex];
-          if (upEmail) {
-            const fullEmail = await getEmailById(upEmail.id);
-            setEmails(prev => prev.map(e => e.id === fullEmail.id ? fullEmail : e));
+          
+          // Just update the selectedEmailIndex, don't open the email
+          // This is what will allow navigation without opening emails
+          if (filteredEmails[newUpIndex]) {
+            // Do NOT set selectedEmail here, that opens the email view
+            // Instead, we'll highlight in the list using selectedEmailIndex
+            
+            // Scroll the selected item into view if needed
+            setTimeout(() => {
+              const element = document.querySelector(`[data-email-id="${filteredEmails[newUpIndex].id}"]`);
+              if (element) {
+                element.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+              }
+            }, 0);
           }
           break;
         case 'ArrowDown':
+          event.preventDefault(); // Prevent default scrolling
           const newDownIndex = Math.min(filteredEmails.length - 1, selectedEmailIndex + 1);
           setSelectedEmailIndex(newDownIndex);
-          const downEmail = filteredEmails[newDownIndex];
-          if (downEmail) {
-            const fullEmail = await getEmailById(downEmail.id);
-            setEmails(prev => prev.map(e => e.id === fullEmail.id ? fullEmail : e));
+          
+          // Just update the selectedEmailIndex, don't open the email
+          if (filteredEmails[newDownIndex]) {
+            // Do NOT set selectedEmail here, that opens the email view
+            // Instead, we'll highlight in the list using selectedEmailIndex
+            
+            // Scroll the selected item into view if needed
+            setTimeout(() => {
+              const element = document.querySelector(`[data-email-id="${filteredEmails[newDownIndex].id}"]`);
+              if (element) {
+                element.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+              }
+            }, 0);
+          }
+          break;
+        case 'ArrowRight':
+          // Only open the email when right arrow is pressed
+          event.preventDefault(); // Prevent default behavior
+          if (selectedEmailIndex >= 0 && filteredEmails[selectedEmailIndex]) {
+            const email = filteredEmails[selectedEmailIndex];
+            await handleEmailClick(email);
           }
           break;
         case 'Enter':
-          const email = filteredEmails[selectedEmailIndex];
-          if (email) {
-            handleEmailClick(email);
+          // Only open the email when enter is pressed
+          event.preventDefault(); // Prevent default behavior
+          if (selectedEmailIndex >= 0 && filteredEmails[selectedEmailIndex]) {
+            const email = filteredEmails[selectedEmailIndex];
+            await handleEmailClick(email);
           }
           break;
       }
@@ -419,21 +551,82 @@ const HomePage: React.FC<HomePageProps> = () => {
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [filteredEmails, selectedEmailIndex]);
-
-  useEffect(() => {
-    if (filteredEmails && filteredEmails.length > selectedEmailIndex) {
-      const newEmail = filteredEmails[selectedEmailIndex];
-      if (newEmail && newEmail.id !== selectedEmail?.id) {
-        setSelectedEmail(newEmail);
-      }
-    }
-  }, [selectedEmailIndex, filteredEmails, selectedEmail]);
+  }, [filteredEmails, selectedEmailIndex, selectedEmail, getEmailById, handleEmailClick]);
 
   // Toggle sidebar visibility
   const toggleSidebar = () => {
     setSidebarVisible(prevState => !prevState);
   };
+
+  // Handle drag to resize sidebar width
+  const handleDragStart = (e: React.MouseEvent) => {
+    e.preventDefault();
+    startXRef.current = e.clientX;
+    startWidthRef.current = sidebarWidthState;
+    setIsDragging(true);
+  };
+
+  // Define the drag and end functions with useRef to avoid dependency cycles
+  const handleDragRef = React.useRef((e: MouseEvent) => {
+    if (!isDragging) return;
+    const newWidth = startWidthRef.current + (e.clientX - startXRef.current);
+    // Increase max width to 800px to allow more space for the email preview list
+    const limitedWidth = Math.max(250, Math.min(800, newWidth));
+    setSidebarWidthState(limitedWidth);
+  });
+
+  const handleDragEndRef = React.useRef(() => {
+    setIsDragging(false);
+    document.removeEventListener('mousemove', handleDragRef.current);
+    document.removeEventListener('mouseup', handleDragEndRef.current);
+  });
+
+  // Update the refs when relevant dependencies change
+  useEffect(() => {
+    handleDragRef.current = (e: MouseEvent) => {
+      if (!isDragging) return;
+      const newWidth = startWidthRef.current + (e.clientX - startXRef.current);
+      // Increase max width to 800px to allow more space for the email preview list
+      const limitedWidth = Math.max(250, Math.min(800, newWidth));
+      setSidebarWidthState(limitedWidth);
+    };
+    
+    handleDragEndRef.current = () => {
+      setIsDragging(false);
+      document.removeEventListener('mousemove', handleDragRef.current);
+      document.removeEventListener('mouseup', handleDragEndRef.current);
+    };
+  }, [isDragging]);
+
+  // Setup and cleanup event listeners when dragging starts
+  useEffect(() => {
+    if (isDragging) {
+      document.addEventListener('mousemove', handleDragRef.current);
+      document.addEventListener('mouseup', handleDragEndRef.current);
+    }
+    
+    return () => {
+      document.removeEventListener('mousemove', handleDragRef.current);
+      document.removeEventListener('mouseup', handleDragEndRef.current);
+    };
+  }, [isDragging]);
+
+  // Set cursor style for entire document while dragging
+  useEffect(() => {
+    if (isDragging) {
+      document.body.style.cursor = 'col-resize';
+      // Prevent text selection during resize
+      document.body.style.userSelect = 'none';
+    } else {
+      document.body.style.cursor = '';
+      document.body.style.userSelect = '';
+    }
+    
+    return () => {
+      document.body.style.cursor = '';
+      document.body.style.userSelect = '';
+    };
+  }, [isDragging]);
 
   if (!isAuthenticated) {
     return (
@@ -456,7 +649,7 @@ const HomePage: React.FC<HomePageProps> = () => {
       }}
     >
       <Header
-        showBackButton={Boolean(selectedEmail || showEmailList)}
+        showBackButton={false}
         onBack={handleBackButtonClick}
         signOut={signOut}
         loading={loading}
@@ -464,54 +657,66 @@ const HomePage: React.FC<HomePageProps> = () => {
 
       <Box
         id="main-content-container"
-                          sx={{
+        sx={{
           flexGrow: 1,
           display: 'flex',
           flexDirection: { xs: 'column', md: 'row' },
-                            overflow: 'hidden',
+          overflow: 'hidden',
+          bgcolor: 'background.default',
+          borderRadius: 4,
+          boxShadow: { xs: 'none', md: 2 },
+          mt: { xs: 0, md: 2 },
+          mx: { xs: 0, md: 2 },
         }}
       >
         <Box
-                          sx={{
-            width: { xs: '100%', md: sidebarWidth },
+          sx={{
+            width: { xs: '100%', md: `${sidebarWidthState}px` },
             display: { xs: showEmailList || !selectedEmail ? 'flex' : 'none', md: 'flex' },
-            borderRight: { xs: 'none', md: '1px solid' },
+            borderRight: { xs: 'none', md: '1.5px solid' },
             borderColor: 'divider',
-            height: { xs: 'auto', md: 'calc(100vh - 64px)' },
-                            overflow: 'hidden',
-            flexDirection: 'column'
+            height: { xs: 'auto', md: 'calc(100vh - 56px)' },
+            overflow: 'hidden',
+            flexDirection: 'column',
+            bgcolor: 'background.paper',
+            borderRadius: { xs: 0, md: '16px 0 0 16px' },
+            boxShadow: { xs: 'none', md: 1 },
           }}
         >
           {/* Sidebar content */}
           <Box
-                        sx={{
-              p: { xs: spacing.xs, md: spacing.sm },
-                          display: 'flex',
+            sx={{
+              p: { xs: '8px 16px', md: '16px 24px' },
+              display: 'flex',
               justifyContent: 'space-between',
               alignItems: 'center',
-              borderBottom: '1px solid',
+              borderBottom: '1.5px solid',
               borderColor: 'divider',
+              bgcolor: 'background.paper',
+              borderTopLeftRadius: { xs: 0, md: 16 },
+              borderTopRightRadius: { xs: 0, md: 0 },
             }}
           >
-            <Typography variant="h6" component="h1">
+            <Typography variant="h6" component="h1" sx={{ fontWeight: 700 }}>
               Inbox
             </Typography>
             <Box sx={{ display: 'flex', gap: 1 }}>
               <Tooltip title="Refresh">
-                        <IconButton
+                <IconButton
                   onClick={handleRefreshEmails}
                   disabled={refreshingEmails}
-                          size="small"
-                        >
+                  size="small"
+                  aria-label="Refresh Email List"
+                >
                   {refreshingEmails ? (
                     <CircularProgress size={20} />
-                          ) : (
+                  ) : (
                     <RefreshIcon fontSize="small" />
-                          )}
-                        </IconButton>
+                  )}
+                </IconButton>
               </Tooltip>
-                      </Box>
-        </Box>
+            </Box>
+          </Box>
 
           {/* Email list section - keep it scrollable */}
           <Box 
@@ -529,6 +734,7 @@ const HomePage: React.FC<HomePageProps> = () => {
               <EmailList
                 emails={emails}
                 selectedEmailId={selectedEmail?.id}
+                selectedIndex={selectedEmailIndex}
                 onSelectEmail={handleSelectEmail}
               />
             ) : (
@@ -550,28 +756,117 @@ const HomePage: React.FC<HomePageProps> = () => {
                       </Box>
                     </Box>
 
+        {/* Draggable divider */}
+        <Box
+          sx={{
+            width: '10px', // Increased width for easier grabbing
+            cursor: 'col-resize',
+            backgroundColor: theme => 
+              isDragging 
+                ? theme.palette.primary.main 
+                : theme.palette.mode === 'dark' 
+                  ? 'rgba(255,255,255,0.08)' 
+                  : 'rgba(0,0,0,0.05)',
+            height: 'calc(100vh - 40px)',
+            display: { xs: 'none', md: 'block' },
+            transition: isDragging ? 'none' : 'background-color 0.2s',
+            '&:hover': {
+              backgroundColor: theme => 
+                theme.palette.mode === 'dark' 
+                  ? 'rgba(255,255,255,0.15)' 
+                  : 'rgba(0,0,0,0.1)',
+              '&::before': {
+                opacity: 0.8,
+              }
+            },
+            '&:active': {
+              backgroundColor: theme => theme.palette.primary.main,
+            },
+            userSelect: 'none',
+            zIndex: 100, // Ensure it's above other content
+            position: 'relative',
+            // Add a visual indicator in the center of the divider
+            '&::before': {
+              content: '""',
+              position: 'absolute',
+              top: 'calc(50% - 40px)',
+              left: '50%',
+              transform: 'translateX(-50%)',
+              width: '4px',
+              height: '80px',
+              backgroundColor: theme => 
+                theme.palette.mode === 'dark' 
+                  ? 'rgba(255,255,255,0.3)' 
+                  : 'rgba(0,0,0,0.2)',
+              borderRadius: '2px',
+              opacity: 0.5,
+              transition: 'opacity 0.2s',
+            },
+            '&::after': isDragging ? {
+              content: '""',
+              position: 'absolute',
+              top: 'calc(50% - 15px)',
+              left: '50%',
+              transform: 'translateX(-50%)',
+              width: '6px',
+              height: '30px',
+              backgroundColor: theme => theme.palette.primary.main,
+              borderRadius: '3px',
+              opacity: 0.9,
+            } : {},
+          }}
+          onMouseDown={handleDragStart}
+          role="separator"
+          aria-orientation="vertical"
+          aria-valuenow={sidebarWidthState}
+          tabIndex={0}
+        />
+
         {/* Email content section - make sure it's scrollable */}
         <Box
-                      sx={{ 
+          sx={{ 
             flexGrow: 1,
             display: { xs: !showEmailList && selectedEmail ? 'block' : 'none', md: 'block' },
-            height: { xs: 'calc(100vh - 64px)', md: 'calc(100vh - 64px)' },
-            overflow: 'auto', // Make this area scrollable
-            pb: { xs: 6, sm: 2 }, // Add bottom padding especially on mobile
+            height: { xs: 'calc(100vh - 56px)', md: 'calc(100vh - 56px)' },
+            overflow: 'auto',
+            pb: { xs: 6, sm: 2 },
+            width: { md: `calc(100% - ${sidebarWidthState}px - 5px)` },
+            position: 'relative',
+            bgcolor: 'background.paper',
+            borderRadius: { xs: 0, md: '0 16px 16px 0' },
+            boxShadow: { xs: 'none', md: 1 },
           }}
         >
           {selectedEmail ? (
-            <EmailContent
-              email={selectedEmail}
-              onAction={handleEmailAction}
-              goBack={() => setSelectedEmail(null)}
-            />
+            <>
+              {/* Email loading indicator */}
+              {loading && (
+                <Box sx={{ 
+                  position: 'absolute', 
+                  top: '50%', 
+                  left: '50%', 
+                  transform: 'translate(-50%, -50%)',
+                  zIndex: 10
+                }}>
+                  <CircularProgress size={40} />
+                </Box>
+              )}
+              <EmailContent
+                email={selectedEmail}
+                onAction={handleEmailAction}
+                goBack={() => {
+                  setSelectedEmail(null);
+                  setSidebarVisible(true);
+                  setShowEmailList(true);
+                }}
+              />
+            </>
           ) : (
-        <Box
-          sx={{
-            display: 'flex',
-            justifyContent: 'center',
-            alignItems: 'center',
+            <Box
+              sx={{
+                display: 'flex',
+                justifyContent: 'center',
+                alignItems: 'center',
                 height: '100%',
                 p: spacing.md,
               }}
@@ -579,8 +874,8 @@ const HomePage: React.FC<HomePageProps> = () => {
               <Typography color="text.secondary" align="center">
                 Select an email to view its content
               </Typography>
-        </Box>
-      )}
+            </Box>
+          )}
         </Box>
       </Box>
 

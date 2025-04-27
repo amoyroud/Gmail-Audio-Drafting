@@ -13,12 +13,14 @@ import { Email } from '../types/types';
 interface EmailListProps {
   emails: Email[];
   selectedEmailId?: string;
+  selectedIndex?: number;
   onSelectEmail: (email: Email) => void;
 }
 
 const EmailList: React.FC<EmailListProps> = ({ 
   emails, 
   selectedEmailId, 
+  selectedIndex = -1,
   onSelectEmail 
 }) => {
   const getAvatarInitial = (from: string | {name?: string, email: string}) => {
@@ -35,14 +37,21 @@ const EmailList: React.FC<EmailListProps> = ({
     return email.unread;
   };
 
+  const handleEmailClick = (email: Email) => {
+    console.log('Email list item clicked:', email.id);
+    // Call the parent component's handler
+    onSelectEmail(email);
+  };
+
   return (
     <List disablePadding>
       {emails.map((email, index) => (
         <React.Fragment key={email.id}>
           {index > 0 && <Divider />}
           <ListItemButton
-            selected={email.id === selectedEmailId}
-            onClick={() => onSelectEmail(email)}
+            selected={email.id === selectedEmailId || index === selectedIndex}
+            onClick={() => handleEmailClick(email)}
+            data-email-id={email.id}
             sx={{
               py: 1.5,
               px: { xs: 2, md: 3 },
@@ -75,7 +84,7 @@ const EmailList: React.FC<EmailListProps> = ({
               primaryTypographyProps={{ component: 'div' }}
               secondaryTypographyProps={{ component: 'div' }}
               primary={
-                <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline' }}>
+                <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', width: '100%' }}>
                   <Typography 
                     variant="body1" 
                     component="div"
@@ -84,7 +93,8 @@ const EmailList: React.FC<EmailListProps> = ({
                       textOverflow: 'ellipsis',
                       overflow: 'hidden',
                       whiteSpace: 'nowrap',
-                      maxWidth: { xs: '180px', sm: '250px' }
+                      flex: 1,
+                      mr: 1
                     }}
                   >
                     {email.from.name || email.from.email}
@@ -93,14 +103,14 @@ const EmailList: React.FC<EmailListProps> = ({
                     variant="caption" 
                     component="div"
                     color="text.secondary"
-                    sx={{ ml: 1, flexShrink: 0 }}
+                    sx={{ flexShrink: 0 }}
                   >
                     {new Date(email.date).toLocaleDateString()}
                   </Typography>
                 </Box>
               }
               secondary={
-                <Box>
+                <Box sx={{ width: '100%' }}>
                   <Typography 
                     variant="body2" 
                     component="div"
@@ -108,7 +118,8 @@ const EmailList: React.FC<EmailListProps> = ({
                       fontWeight: isUnread(email) ? 600 : 400,
                       overflow: 'hidden',
                       textOverflow: 'ellipsis',
-                      whiteSpace: 'nowrap'
+                      whiteSpace: 'nowrap',
+                      width: '100%'
                     }}
                   >
                     {email.subject}
@@ -122,7 +133,8 @@ const EmailList: React.FC<EmailListProps> = ({
                       textOverflow: 'ellipsis',
                       whiteSpace: 'nowrap',
                       fontSize: '0.75rem',
-                      mt: 0.5
+                      mt: 0.5,
+                      width: '100%'
                     }}
                   >
                     {email.snippet}

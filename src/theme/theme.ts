@@ -67,38 +67,74 @@ const getTheme = (mode: ThemeMode) => {
     typography: {
       fontFamily: '"Inter", "Roboto", "Helvetica", "Arial", sans-serif',
       h1: {
-        fontWeight: 700,
+        fontWeight: 800,
+        fontSize: '2.75rem', // 44px
+        lineHeight: 1.15,
+        letterSpacing: '-0.02em',
       },
       h2: {
         fontWeight: 700,
+        fontSize: '2.25rem', // 36px
+        lineHeight: 1.2,
+        letterSpacing: '-0.01em',
       },
       h3: {
-        fontWeight: 600,
+        fontWeight: 700,
+        fontSize: '1.75rem', // 28px
+        lineHeight: 1.25,
       },
       h4: {
         fontWeight: 600,
+        fontSize: '1.5rem', // 24px
+        lineHeight: 1.3,
       },
       h5: {
         fontWeight: 600,
+        fontSize: '1.25rem', // 20px
+        lineHeight: 1.35,
       },
       h6: {
         fontWeight: 600,
+        fontSize: '1.1rem', // 17.6px
+        lineHeight: 1.4,
       },
       subtitle1: {
         fontWeight: 500,
+        fontSize: '1rem',
+        lineHeight: 1.5,
       },
       subtitle2: {
         fontWeight: 500,
+        fontSize: '0.95rem',
+        lineHeight: 1.5,
       },
       body1: {
         fontWeight: 400,
+        fontSize: '1rem',
+        lineHeight: 1.7,
       },
       body2: {
         fontWeight: 400,
+        fontSize: '0.92rem',
+        lineHeight: 1.7,
       },
       button: {
-        fontWeight: 500,
+        fontWeight: 600,
+        fontSize: '1rem',
         textTransform: 'none',
+        letterSpacing: '0.01em',
+      },
+      caption: {
+        fontWeight: 400,
+        fontSize: '0.8rem',
+        lineHeight: 1.5,
+        color: '#888',
+      },
+      overline: {
+        fontWeight: 500,
+        fontSize: '0.75rem',
+        letterSpacing: '0.08em',
+        textTransform: 'uppercase',
       },
     },
     shape: {
@@ -113,8 +149,9 @@ const getTheme = (mode: ThemeMode) => {
         styleOverrides: {
           root: {
             backgroundImage: 'none',
-            border: `1px solid ${mode === 'light' ? 'rgba(0, 0, 0, 0.08)' : 'rgba(255, 255, 255, 0.08)'}`,
-            borderRadius: 12,
+            border: `1.5px solid ${mode === 'light' ? 'rgba(0, 0, 0, 0.08)' : 'rgba(255, 255, 255, 0.08)'}`,
+            borderRadius: 16,
+            boxShadow: mode === 'light' ? '0 2px 12px rgba(33, 150, 243, 0.04)' : '0 2px 12px rgba(0,0,0,0.18)',
             transition: 'all 0.2s ease-in-out',
             overflow: 'hidden',
           },
@@ -126,21 +163,40 @@ const getTheme = (mode: ThemeMode) => {
         styleOverrides: {
           root: {
             borderRadius: 8,
-            padding: '8px 16px',
-            fontWeight: 500,
+            padding: '8px 20px',
+            fontWeight: 600,
+            fontSize: '1rem',
             textTransform: 'none',
             boxShadow: 'none',
+            transition: 'background 0.2s, color 0.2s, box-shadow 0.2s',
             '&:hover': {
-              boxShadow: mode === 'palette' ? '0 4px 8px rgba(204, 75, 36, 0.12)' : mode === 'light' ? '0 4px 8px rgba(0,0,0,0.1)' : '0 4px 8px rgba(0,0,0,0.4)',
+              boxShadow: mode === 'palette' ? '0 4px 12px rgba(49, 112, 57, 0.10)' : mode === 'light' ? '0 4px 12px rgba(33, 150, 243, 0.10)' : '0 4px 12px rgba(144, 202, 249, 0.10)',
             },
           },
           containedPrimary: {
+            backgroundColor: primaryMain,
+            color: '#fff',
             '&:hover': {
-              boxShadow: '0 4px 12px rgba(33, 150, 243, 0.3)',
+              backgroundColor: mode === 'palette' ? '#255828' : mode === 'light' ? '#1976D2' : '#42A5F5',
+              color: '#fff',
             },
           },
           outlinedPrimary: {
-            borderWidth: '1.5px',
+            borderWidth: '2px',
+            borderColor: primaryMain,
+            color: primaryMain,
+            backgroundColor: 'transparent',
+            '&:hover': {
+              backgroundColor: mode === 'palette' ? 'rgba(49, 112, 57, 0.08)' : mode === 'light' ? 'rgba(33, 150, 243, 0.08)' : 'rgba(144, 202, 249, 0.08)',
+              borderColor: primaryMain,
+            },
+          },
+          textPrimary: {
+            color: primaryMain,
+            backgroundColor: 'transparent',
+            '&:hover': {
+              backgroundColor: mode === 'palette' ? 'rgba(49, 112, 57, 0.04)' : mode === 'light' ? 'rgba(33, 150, 243, 0.04)' : 'rgba(144, 202, 249, 0.04)',
+            },
           },
         },
       },
@@ -149,10 +205,10 @@ const getTheme = (mode: ThemeMode) => {
       MuiCard: {
         styleOverrides: {
           root: {
-            borderRadius: 12,
-            boxShadow: 'none',
-            border: `1px solid ${mode === 'light' ? 'rgba(0, 0, 0, 0.08)' : 'rgba(255, 255, 255, 0.08)'}`,
-            backgroundColor: mode === 'light' ? '#FFFFFF' : '#1E1E1E',
+            borderRadius: 16,
+            boxShadow: mode === 'light' ? '0 2px 12px rgba(33, 150, 243, 0.04)' : '0 2px 12px rgba(0,0,0,0.18)',
+            border: `1.5px solid ${mode === 'light' ? 'rgba(0, 0, 0, 0.10)' : 'rgba(255, 255, 255, 0.10)'}`,
+            backgroundColor: mode === 'palette' ? antiqueWhite : mode === 'light' ? '#fff' : '#23272f',
           },
         },
       },

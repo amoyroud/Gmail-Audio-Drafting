@@ -150,12 +150,11 @@ const AudioRecorder: React.FC<AudioRecorderProps> = ({
   
   // Template selection state
   const [selectedTemplateId, setSelectedTemplateId] = useState<string>('');
-  
+
   // Update local state when initialAction changes from parent
   useEffect(() => {
     if (initialAction) {
-      setSelectedAction(initialAction);
-      
+      setSelectedAction('speech-to-text'); // Always start with first action
       // Reset state when action changes
       setAudioBlob(null);
       setTranscription('');
@@ -164,22 +163,10 @@ const AudioRecorder: React.FC<AudioRecorderProps> = ({
       setSelectedTemplateId('');
       setSuccess(null);
       setError(null);
-      
-      // Automatically start recording when speech-to-text or ai-draft is selected
-      if ((initialAction === 'speech-to-text' || initialAction === 'ai-draft') && !isRecording) {
-        // Warm-up phase - initialize microphone before recording
-        // Small delay to ensure UI is ready and permissions are granted
-        setIsWarmingUp(true);
-        setTimeout(() => {
-          // Only start recording if still on speech-to-text or ai-draft action
-          if (selectedAction === 'speech-to-text' || selectedAction === 'ai-draft') {
-            setIsWarmingUp(false);
-            startRecording();
-          }
-        }, 800); // 800ms warm-up time
-      }
+      setIsWarmingUp(false);
+      // Do NOT start recording automatically
     }
-  }, [initialAction, selectedAction]);
+  }, [initialAction]);
 
   useEffect(() => {
     if (selectedAction !== 'quick-decline') {
@@ -189,6 +176,18 @@ const AudioRecorder: React.FC<AudioRecorderProps> = ({
 
   // Add state for warm-up phase
   const [isWarmingUp, setIsWarmingUp] = useState(false);
+
+  // When selectedAction changes to 'speech-to-text', start recording immediately if not already recording
+  useEffect(() => {
+    // Only start recording automatically if:
+    // 1. Action is speech-to-text
+    // 2. Not currently recording
+    // 3. Not currently processing audio
+    // 4. No transcription or audio blob exists yet (this is the important new check)
+    if (selectedAction === 'speech-to-text' && !isRecording && !processingAudio && !audioBlob && !transcription && !draftReply) {
+      startRecording();
+    }
+  }, [selectedAction, isRecording, processingAudio, audioBlob, transcription, draftReply]);
 
   const startRecording = async () => {
     if (isRecording) return;
@@ -305,6 +304,101 @@ const AudioRecorder: React.FC<AudioRecorderProps> = ({
       setProcessingAudio(false);
     }
   };
+
+  // Add keyboard event handling after function declarations
+  useEffect(() => {
+    // Improved function to detect if element is an editable field
+    const isEditableField = (element: EventTarget | null): boolean => {
+      if (!element) return false;
+      
+      // Check if element is an input field or textarea
+      if (element instanceof HTMLInputElement || element instanceof HTMLTextAreaElement) {
+        return true;
+      }
+      
+      // Check for contentEditable elements
+      if ((element as HTMLElement)?.isContentEditable) {
+        return true;
+      }
+      
+      // Check for MUI input components
+      if ((element as HTMLElement)?.closest('.MuiInputBase-root, .MuiOutlinedInput-root, .MuiFilledInput-root, .MuiInput-root')) {
+        return true;
+      }
+      
+      return false;
+    };
+
+    const handleKeyDown = (event: KeyboardEvent) => {
+      // If user is typing in an editable field, don't interfere with any keys
+      if (isEditableField(event.target)) {
+        return; // Allow normal text editing behavior
+      }
+      
+      // Skip handling ArrowUp and ArrowDown to allow email navigation in parent component
+      if (event.key === 'ArrowUp' || event.key === 'ArrowDown') {
+        return;
+      }
+      
+      // Prevent default space behavior only when not in editable fields
+      if (event.key === ' ') {
+        event.preventDefault();
+      }
+    };
+
+    const handleKeyUp = (event: KeyboardEvent) => {
+      // If user is typing in an editable field, don't process any shortcuts
+      if (isEditableField(event.target)) {
+        return; // Allow normal text editing behavior
+      }
+
+      // Skip handling ArrowUp and ArrowDown to allow email navigation in parent component
+      if (event.key === 'ArrowUp' || event.key === 'ArrowDown') {
+        return;
+      }
+
+      const actions: EmailActionType[] = ['speech-to-text', 'quick-decline', 'move-to-read', 'archive'];
+      const currentIndex = actions.indexOf(selectedAction);
+
+      switch (event.key) {
+        case ' ':
+        case 'Enter':
+          // Trigger the current action
+          if (selectedAction === 'speech-to-text' || selectedAction === 'quick-decline') {
+            if (isRecording) {
+              stopRecording();
+            } else {
+              startRecording();
+            }
+          } else {
+            // For other actions, trigger save or perform
+            handleSaveDraft();
+          }
+          break;
+        case 'ArrowLeft':
+          if (currentIndex === 0) {
+            // On first action, close modal and return focus
+            if (onActionComplete) onActionComplete();
+          } else {
+            const prevIndex = (currentIndex - 1 + actions.length) % actions.length;
+            setSelectedAction(actions[prevIndex]);
+          }
+          break;
+        case 'ArrowRight':
+          const nextIndex = (currentIndex + 1) % actions.length;
+          setSelectedAction(actions[nextIndex]);
+          break;
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    window.addEventListener('keyup', handleKeyUp);
+
+    return () => {
+      window.removeEventListener('keydown', handleKeyDown);
+      window.removeEventListener('keyup', handleKeyUp);
+    };
+  }, [isRecording, selectedAction, startRecording, stopRecording]);
   
   const processAudioToText = async (audioBlob: Blob) => {
     try {
@@ -403,14 +497,6 @@ const AudioRecorder: React.FC<AudioRecorderProps> = ({
         case 'speech-to-text':
           result = await executeAction({
             type: 'speech-to-text',
-            email: stableEmail,
-            transcription: draftReply || transcription
-          });
-          break;
-          
-        case 'ai-draft':
-          result = await executeAction({
-            type: 'ai-draft',
             email: stableEmail,
             transcription: draftReply || transcription
           });
@@ -526,8 +612,6 @@ const AudioRecorder: React.FC<AudioRecorderProps> = ({
     switch (action) {
       case 'speech-to-text':
         return 'Draft saved successfully!';
-      case 'ai-draft':
-        return 'AI Draft created successfully!';
       case 'quick-decline':
         return 'Decline email drafted successfully!';
       case 'move-to-read':
@@ -543,8 +627,6 @@ const AudioRecorder: React.FC<AudioRecorderProps> = ({
     switch (selectedAction) {
       case 'speech-to-text':
         return savingDraft ? 'Saving...' : 'Save as Draft';
-      case 'ai-draft':
-        return savingDraft ? 'Creating AI Draft...' : 'Create AI Draft';
       case 'quick-decline':
         return savingDraft ? 'Saving...' : 'Save Decline Draft';
       case 'move-to-read':
@@ -935,17 +1017,12 @@ const AudioRecorder: React.FC<AudioRecorderProps> = ({
 
       {/* Draft Reply Section */}
       {((draftReply || transcription) && !isRecording && !processingAudio && stableEmail) && (
-        <Paper 
-          elevation={0}
+        <Box 
           sx={{ 
-            p: { xs: spacing.xs, sm: spacing.sm }, 
             mt: spacing.sm, 
-            mb: { xs: 2, sm: 3 }, 
-            borderRadius: '12px',
-            border: '1px solid',
-            borderColor: 'divider',
+            mb: { xs: 2, sm: 3 },
             position: 'relative',
-            overflow: 'hidden' // Ensure no overflow outside the Paper
+            overflow: 'hidden' // Ensure no overflow
           }}
         >
           <Box sx={{ 
@@ -979,24 +1056,6 @@ const AudioRecorder: React.FC<AudioRecorderProps> = ({
                 </IconButton>
               </Tooltip>
             </Box>
-            
-              {selectedAction === 'speech-to-text' && !generatingDraft && draftReply && (
-                <Tooltip title="Enhance with AI">
-                  <Button
-                    size="small"
-                    variant="outlined"
-                    color="primary"
-                    onClick={() => {
-                      console.log('Enhance with AI clicked');
-                      generateReply(draftReply);
-                    }}
-                    startIcon={<AutoFixHighIcon />}
-                    sx={{ ml: 1, borderRadius: '8px', fontSize: '0.75rem' }}
-                  >
-                    Enhance with AI
-                  </Button>
-                </Tooltip>
-              )}
           </Box>
 
           {generatingDraft ? (
@@ -1022,6 +1081,10 @@ const AudioRecorder: React.FC<AudioRecorderProps> = ({
               onChange={(e: React.ChangeEvent<HTMLTextAreaElement>) => setDraftReply(e.target.value)}
               variant="outlined"
               placeholder="Your transcribed text will appear here"
+              onKeyDown={(e) => {
+                // Stop propagation of all key events to prevent global shortcuts from firing
+                e.stopPropagation();
+              }}
               sx={{ 
                 '& .MuiOutlinedInput-root': {
                   borderRadius: '8px',
@@ -1088,20 +1151,8 @@ const AudioRecorder: React.FC<AudioRecorderProps> = ({
             </Box>
           )}
 
-          {((draftReply && !generatingDraft) || transcription || selectedAction === 'move-to-read' || selectedAction === 'archive') && (
+          {((draftReply || transcription) && !isRecording && !processingAudio && stableEmail) && (
             <Box 
-              ref={(el: HTMLDivElement | null) => {
-                if (el) {
-                  console.log('Button container dimensions:', {
-                    width: el.clientWidth,
-                    height: el.clientHeight,
-                    offsetTop: el.offsetTop,
-                    position: window.getComputedStyle(el).position,
-                    bottom: window.getComputedStyle(el).bottom,
-                    zIndex: window.getComputedStyle(el).zIndex
-                  });
-                }
-              }}
               sx={{
                 display: 'flex',
                 flexDirection: { xs: 'column', sm: 'row' },
@@ -1123,65 +1174,59 @@ const AudioRecorder: React.FC<AudioRecorderProps> = ({
                 },
               }}
             >
+              {/* Send Email button (always first) */}
               <Button
                 variant="contained"
                 color="primary"
-                startIcon={selectedAction === 'archive' ? <ArchiveIcon /> : <SendIcon />}
-                onClick={async () => {
-                  // For archive action, directly call performAction
-                  if (selectedAction === 'archive' && stableEmail) {
-                    try {
-                      setIsPerformingAction(true);
-                      const result = await archiveEmail(stableEmail.id);
-                      setSuccess('Email archived successfully!');
-                      if (onActionComplete) onActionComplete();
-                      setTimeout(() => setSuccess(null), 2000);
-                    } catch (error) {
-                      console.error('Error archiving email:', error);
-                      setError('Failed to archive email. Please try again.');
-                    } finally {
-                      setIsPerformingAction(false);
-                    }
-                  } else {
-                    // For other actions, use the normal flow
-                    handleSaveDraft();
-                  }
+                onClick={handleSendEmail}
+                disabled={!draftReply || processingAudio || isPerformingAction}
+                startIcon={<SendIcon />}
+                sx={{
+                  ...primaryButtonStyles,
+                  height: 48,
+                  borderRadius: '8px',
+                  minWidth: 180
                 }}
+              >
+                Send Email
+              </Button>
+
+              {/* Enhance with AI button (always visible if draftReply) */}
+              <Button
+                variant="contained"
+                color="primary"
+                onClick={() => generateReply(draftReply)}
+                startIcon={<AutoFixHighIcon />}
+                sx={{ borderRadius: '8px', fontSize: '0.95rem', height: 48, minWidth: 180 }}
+                disabled={!draftReply || generatingDraft}
+              >
+                Enhance with AI
+              </Button>
+
+              {/* Save as Draft button (always last) */}
+              <Button
+                variant="contained"
+                color="primary"
+                startIcon={<ArchiveIcon />}
+                onClick={handleSaveDraft}
                 disabled={
                   isPerformingAction || 
                   savingDraft || 
                   processingAudio ||
-                  ((selectedAction !== 'speech-to-text' && selectedAction !== 'move-to-read' && selectedAction !== 'archive') && !draftReply) ||
-                  (selectedAction === 'speech-to-text' && !transcription && !draftReply)
+                  !draftReply
                 }
                 sx={{ 
                   ...primaryButtonStyles,
-                  boxShadow: 2,
-                  height: 48
+                  height: 48,
+                  borderRadius: '8px',
+                  minWidth: 180
                 }}
               >
-                {getActionButtonText()}
+                Save as Draft
               </Button>
-              
-              {/* Show send button for draft actions (speech-to-text now shows both buttons) */}
-              {(selectedAction === 'speech-to-text' || selectedAction === 'quick-decline') && (
-                <Button
-                  variant="contained"
-                  color="primary"
-                  onClick={handleSendEmail}
-                  disabled={!draftReply || processingAudio || isPerformingAction}
-                  startIcon={<SendIcon />}
-                  sx={{
-                    ...primaryButtonStyles,
-                    height: 48
-                  }}
-                >
-                  Send Email
-                </Button>
-              )}
             </Box>
           )}
-        </Paper>
+        </Box>
       )}
     </Box>
   );

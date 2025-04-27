@@ -87,7 +87,7 @@ const ActionSelector: React.FC<ActionSelectorProps> = ({
           }
         }}
       >
-        <Tooltip title="Speech to Text (Direct)">
+        <Tooltip title="Speech to Text (Direct) - Space to record">
           <span>
             <ToggleButton 
             value="speech-to-text" 
@@ -101,25 +101,7 @@ const ActionSelector: React.FC<ActionSelectorProps> = ({
             <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
               <MicIcon sx={{ fontSize: { xs: 22, sm: 28 } }} />
               <Typography variant="body2" sx={{ mt: { xs: 0.5, sm: 1 }, fontWeight: 500, fontSize: { xs: '0.7rem', sm: '0.875rem' } }}>Speech</Typography>
-            </Box>
-          </ToggleButton>
-          </span>
-        </Tooltip>
-        
-        <Tooltip title="AI Draft from Speech">
-          <span>
-            <ToggleButton 
-            value="ai-draft" 
-            aria-label="ai draft"
-            onClick={() => handleDirectClick('ai-draft')}
-            sx={{ 
-              minWidth: { xs: '90px', sm: '120px' },
-              p: { xs: 1, sm: 2 }
-            }}
-          >
-            <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
-              <SmartToyIcon sx={{ fontSize: { xs: 22, sm: 28 } }} />
-              <Typography variant="body2" sx={{ mt: { xs: 0.5, sm: 1 }, fontWeight: 500, fontSize: { xs: '0.7rem', sm: '0.875rem' } }}>AI Draft</Typography>
+              <Typography variant="caption" sx={{ color: 'text.secondary', fontSize: '0.6rem' }}>Space</Typography>
             </Box>
           </ToggleButton>
           </span>
@@ -139,6 +121,7 @@ const ActionSelector: React.FC<ActionSelectorProps> = ({
             <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
               <CancelScheduleSendIcon sx={{ fontSize: { xs: 22, sm: 28 } }} />
               <Typography variant="body2" sx={{ mt: { xs: 0.5, sm: 1 }, fontWeight: 500, fontSize: { xs: '0.7rem', sm: '0.875rem' } }}>Decline</Typography>
+              <Typography variant="caption" sx={{ color: 'text.secondary', fontSize: '0.6rem' }}>← →</Typography>
             </Box>
           </ToggleButton>
           </span>

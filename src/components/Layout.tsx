@@ -27,6 +27,27 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
   const [anchorEl, setAnchorEl] = React.useState<null | HTMLElement>(null);
   const { selectedEmail, setSelectedEmail, isRecorderOpen, setIsRecorderOpen } = useEmail();
 
+  // Add effect to hide empty boxes
+  React.useEffect(() => {
+    // Hide empty MuiBox elements
+    const style = document.createElement('style');
+    style.textContent = `
+      .MuiBox-root:empty, 
+      .css-lk6p76, 
+      div:empty[class^="MuiBox-root"] { 
+        display: none !important; 
+        height: 0 !important; 
+        padding: 0 !important; 
+        margin: 0 !important; 
+      }
+    `;
+    document.head.appendChild(style);
+    
+    return () => {
+      document.head.removeChild(style);
+    };
+  }, []);
+
   const handleMenuOpen = (event: React.MouseEvent<HTMLElement>) => {
     setAnchorEl(event.currentTarget);
   };
@@ -62,8 +83,8 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
       minHeight: '100vh',
       backgroundColor: theme => theme.palette.mode === 'dark' ? '#121212' : '#ffffff'
     }}>
-      <AppBar position="fixed" sx={{ borderRadius: 0, zIndex: theme.zIndex.drawer + 1 }}>
-        <Toolbar>
+      <AppBar position="fixed" sx={{ borderRadius: 0, zIndex: theme.zIndex.drawer + 1, height: '40px' }}>
+        <Toolbar sx={{ minHeight: '40px !important', padding: '0px 16px' }}>
           <Box 
             component="div" 
             onClick={() => navigate('/')} 
@@ -71,29 +92,29 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
               display: 'flex', 
               alignItems: 'center', 
               cursor: 'pointer',
-              mr: 2 
+              mr: 1
             }}
           >
             <Box 
               sx={{ 
-                width: 32, 
-                height: 32,
-                mr: 1.5,
+                width: 24, 
+                height: 24,
+                mr: 1,
                 display: 'flex',
                 alignItems: 'center',
                 justifyContent: 'center',
                 color: 'white'
               }}
             >
-              <MicIcon sx={{ fontSize: 28 }} />
+              <MicIcon sx={{ fontSize: 20 }} />
             </Box>
-            <Typography variant="h6" component="div" sx={{ flexGrow: 1 }}>
+            <Typography variant="subtitle1" component="div" sx={{ flexGrow: 1 }}>
               Audio Email Assistant
             </Typography>
           </Box>
           <Box sx={{ flexGrow: 1 }} />
           <IconButton
-            size="large"
+            size="small"
             aria-label="settings menu"
             aria-controls="menu-appbar"
             aria-haspopup="true"
@@ -102,10 +123,11 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
             sx={{ 
               border: '1px solid',
               borderColor: 'divider',
-              borderRadius: '8px',
+              borderRadius: '6px',
+              padding: '4px'
             }}
           >
-            <SettingsIcon />
+            <SettingsIcon fontSize="small" />
           </IconButton>
           <Menu
             id="menu-appbar"
@@ -140,7 +162,7 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
           overflowY: 'auto',
           maxWidth: '1600px',
           mx: 'auto',
-          mt: '64px', // Add margin top to account for AppBar height
+          mt: '40px', // Reduced from 64px to 40px
           pb: isMobile ? '80px' : spacing.sm // Add padding at bottom for mobile to account for fixed bottom bar
         }}>
         {children}
